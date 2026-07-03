@@ -448,12 +448,16 @@ router.get('/wardens', async (req, res) => {
 });
 
 router.post('/wardens', async (req, res) => {
-  try { const { name, phone, email, shift, hostel_type, username, password } = req.body;
-    const conn = await pool.getConnection(); await conn.beginTransaction();
+  const { name, phone, email, shift, hostel_type, username, password } = req.body;
+  if (!username || !name) return res.status(400).json({ error: 'Username and name are required' });
+  const conn = await pool.getConnection();
+  try { await conn.beginTransaction();
     const hash = require('bcryptjs').hashSync(password || 'warden123', 10);
     const [u] = await conn.query('INSERT INTO users (username,email,password,role,status,approved) VALUES (?,?,?,?,1,1)', [username, email, hash, 'warden']);
     await conn.query('INSERT INTO wardens (user_id,name,phone,email,shift,hostel_type,status) VALUES (?,?,?,?,?,?,1)', [u.insertId, name, phone, email, shift, hostel_type]);
-    await conn.commit(); conn.release(); res.status(201).json({ message: 'Warden added' }); } catch (e) { res.status(500).json({ error: e.message }); }
+    await conn.commit(); res.status(201).json({ message: 'Warden added' });
+  } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+  finally { conn.release(); }
 });
 
 router.put('/wardens/:id', async (req, res) => {
