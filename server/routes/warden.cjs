@@ -44,6 +44,7 @@ router.get('/attendance/students', async (req, res) => {
 
 router.post('/attendance/mark', async (req, res) => {
   try { const { date, records } = req.body;
+    if (!records || !Array.isArray(records)) return res.status(400).json({ error: 'records array is required' });
     for (const r of records) { await q("INSERT INTO attendance (student_id,date,status,remarks,taken_by,taken_role,is_locked,time) VALUES (?,?,?,?,?,'warden',0,NOW()) ON DUPLICATE KEY UPDATE status=VALUES(status),remarks=VALUES(remarks),taken_by=VALUES(taken_by),taken_role='warden',time=NOW()", [r.student_id, date, r.status, r.remarks || null, req.user.id]); }
     res.json({ message: 'Attendance saved' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });

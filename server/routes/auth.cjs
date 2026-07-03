@@ -23,15 +23,17 @@ router.post('/login', async (req, res) => {
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
-  try { const { username, email, password, name, roll_no, phone, gender, course, year, address } = req.body;
-    const hash = await bcrypt.hash(password, 10);
-    const conn = await pool.getConnection(); await conn.beginTransaction();
+  const { username, email, password, name, roll_no, phone, gender, course, year, address } = req.body;
+  if (!username || !email || !password || !name || !roll_no) return res.status(400).json({ error: 'Required fields missing' });
+  const hash = await bcrypt.hash(password, 10);
+  const conn = await pool.getConnection();
+  try { await conn.beginTransaction();
     const [u] = await conn.query('INSERT INTO users (username, email, password, role, approved) VALUES (?,?,?,?,0)', [username, email, hash, 'student']);
     await conn.query('INSERT INTO students (user_id, name, roll_no, email, phone, gender, course, year, address) VALUES (?,?,?,?,?,?,?,?,?)',
       [u.insertId, name, roll_no, email, phone, gender || 'Male', course, year, address]);
-    await conn.commit(); conn.release();
-    res.status(201).json({ message: 'Registration successful' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    await conn.commit(); res.status(201).json({ message: 'Registration successful' });
+  } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+  finally { conn.release(); }
 });
 
 // GET /api/auth/me

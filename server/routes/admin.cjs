@@ -55,18 +55,19 @@ router.get('/students/:id', async (req, res) => {
 });
 
 router.post('/students', async (req, res) => {
-  try {
-    const { name, roll_no, email, phone, address, gender, course, year, guardian_name, guardian_phone, admission_date, join_date, status } = req.body;
-    const hostel_type = gender === 'Male' ? 'boys' : gender === 'Female' ? 'girls' : '';
-    const conn = await pool.getConnection(); await conn.beginTransaction();
+  const { name, roll_no, email, phone, address, gender, course, year, guardian_name, guardian_phone, admission_date, join_date, status } = req.body;
+  if (!name || !roll_no) return res.status(400).json({ error: 'Name and roll number are required' });
+  const hostel_type = gender === 'Male' ? 'boys' : gender === 'Female' ? 'girls' : null;
+  const conn = await pool.getConnection();
+  try { await conn.beginTransaction();
     const username = roll_no;
     const password = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'; // "password"
     const [u] = await conn.query('INSERT INTO users (username,email,password,role,status,approved) VALUES (?,?,?,?,?,?)', [username, email, password, 'student', 1, 1]);
     await conn.query('INSERT INTO students (user_id,name,roll_no,email,phone,address,gender,course,year,guardian_name,guardian_phone,admission_date,join_date,status,hostel_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       [u.insertId, name, roll_no, email, phone, address, gender, course, year, guardian_name, guardian_phone, admission_date, join_date, status || 'Active', hostel_type]);
-    await conn.commit(); conn.release();
-    res.status(201).json({ message: 'Student added' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    await conn.commit(); res.status(201).json({ message: 'Student added' });
+  } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+  finally { conn.release(); }
 });
 
 router.put('/students/:id', async (req, res) => {
@@ -97,27 +98,29 @@ router.delete('/students/reject/:userId', async (req, res) => {
 });
 
 router.post('/students/assign-room', async (req, res) => {
-  try {
-    const { student_id, room_id, bed_no } = req.body;
-    const conn = await pool.getConnection(); await conn.beginTransaction();
+  const { student_id, room_id, bed_no } = req.body;
+  if (!student_id || !room_id) return res.status(400).json({ error: 'student_id and room_id are required' });
+  const conn = await pool.getConnection();
+  try { await conn.beginTransaction();
     await conn.query('INSERT INTO room_allocations (student_id,room_id,bed_no,allocation_date,status) VALUES (?,?,?,NOW(),?)', [student_id, room_id, bed_no, 'Active']);
     await conn.query('UPDATE rooms SET occupancy=occupancy+1 WHERE id=?', [room_id]);
     await conn.query("UPDATE rooms SET status='Full' WHERE id=? AND capacity<=occupancy", [room_id]);
-    await conn.commit(); conn.release();
-    res.json({ message: 'Room assigned' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    await conn.commit(); res.json({ message: 'Room assigned' });
+  } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+  finally { conn.release(); }
 });
 
 router.post('/students/vacate-room', async (req, res) => {
-  try {
-    const { allocation_id, room_id } = req.body;
-    const conn = await pool.getConnection(); await conn.beginTransaction();
+  const { allocation_id, room_id } = req.body;
+  if (!allocation_id || !room_id) return res.status(400).json({ error: 'allocation_id and room_id are required' });
+  const conn = await pool.getConnection();
+  try { await conn.beginTransaction();
     await conn.query("UPDATE room_allocations SET checkout_date=NOW(), status='CheckedOut' WHERE id=?", [allocation_id]);
     await conn.query('UPDATE rooms SET occupancy=occupancy-1 WHERE id=?', [room_id]);
     await conn.query("UPDATE rooms SET status='Available' WHERE id=? AND capacity>occupancy", [room_id]);
-    await conn.commit(); conn.release();
-    res.json({ message: 'Room vacated' });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+    await conn.commit(); res.json({ message: 'Room vacated' });
+  } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+  finally { conn.release(); }
 });
 
 // Rooms
@@ -173,26 +176,41 @@ router.get('/allocations', async (req, res) => {
 });
 
 router.post('/allocations', async (req, res) => {
-  try { const { student_id, room_id, bed_no } = req.body; const conn = await pool.getConnection(); await conn.beginTransaction();
+  const { student_id, room_id, bed_no } = req.body;
+  if (!student_id || !room_id) return res.status(400).json({ error: 'student_id and room_id are required' });
+  const conn = await pool.getConnection();
+  try { await conn.beginTransaction();
     await conn.query('INSERT INTO room_allocations (student_id,room_id,bed_no,allocation_date,status) VALUES (?,?,?,NOW(),?)', [student_id, room_id, bed_no, 'Active']);
     await conn.query('UPDATE rooms SET occupancy=occupancy+1 WHERE id=?', [room_id]);
-    await conn.query("UPDATE rooms SET status='Full' WHERE id=? AND capacity<=occupancy", [room_id]); await conn.commit(); conn.release(); res.json({ message: 'Allocated' }); } catch (e) { res.status(500).json({ error: e.message }); }
+    await conn.query("UPDATE rooms SET status='Full' WHERE id=? AND capacity<=occupancy", [room_id]); await conn.commit(); res.json({ message: 'Allocated' });
+  } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+  finally { conn.release(); }
 });
 
 router.put('/allocations/transfer/:id', async (req, res) => {
-  try { const { new_room_id, old_room_id } = req.body; const conn = await pool.getConnection(); await conn.beginTransaction();
+  const { new_room_id, old_room_id } = req.body;
+  if (!new_room_id || !old_room_id) return res.status(400).json({ error: 'new_room_id and old_room_id are required' });
+  const conn = await pool.getConnection();
+  try { await conn.beginTransaction();
     await conn.query('UPDATE room_allocations SET room_id=?, allocation_date=NOW() WHERE id=?', [new_room_id, req.params.id]);
     await conn.query('UPDATE rooms SET occupancy=occupancy-1 WHERE id=?', [old_room_id]);
     await conn.query("UPDATE rooms SET status='Available' WHERE id=? AND capacity>occupancy", [old_room_id]);
     await conn.query('UPDATE rooms SET occupancy=occupancy+1 WHERE id=?', [new_room_id]);
-    await conn.query("UPDATE rooms SET status='Full' WHERE id=? AND capacity<=occupancy", [new_room_id]); await conn.commit(); conn.release(); res.json({ message: 'Transferred' }); } catch (e) { res.status(500).json({ error: e.message }); }
+    await conn.query("UPDATE rooms SET status='Full' WHERE id=? AND capacity<=occupancy", [new_room_id]); await conn.commit(); res.json({ message: 'Transferred' });
+  } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+  finally { conn.release(); }
 });
 
 router.put('/allocations/vacate/:id', async (req, res) => {
-  try { const { room_id } = req.body; const conn = await pool.getConnection(); await conn.beginTransaction();
+  const { room_id } = req.body;
+  if (!room_id) return res.status(400).json({ error: 'room_id is required' });
+  const conn = await pool.getConnection();
+  try { await conn.beginTransaction();
     await conn.query("UPDATE room_allocations SET checkout_date=NOW(), status='CheckedOut' WHERE id=?", [req.params.id]);
     await conn.query('UPDATE rooms SET occupancy=occupancy-1 WHERE id=?', [room_id]);
-    await conn.query("UPDATE rooms SET status='Available' WHERE id=? AND capacity>occupancy", [room_id]); await conn.commit(); conn.release(); res.json({ message: 'Vacated' }); } catch (e) { res.status(500).json({ error: e.message }); }
+    await conn.query("UPDATE rooms SET status='Available' WHERE id=? AND capacity>occupancy", [room_id]); await conn.commit(); res.json({ message: 'Vacated' });
+  } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+  finally { conn.release(); }
 });
 
 // Fees
@@ -300,12 +318,17 @@ router.get('/attendance', async (req, res) => {
 
 router.post('/attendance/mark', async (req, res) => {
   try { const { date, records } = req.body;
+    if (!records || !Array.isArray(records)) return res.status(400).json({ error: 'records array is required' });
     const conn = await pool.getConnection();
-    for (const r of records) {
-      await conn.query("INSERT INTO attendance (student_id,date,status,remarks,taken_by,taken_role,is_locked,time) VALUES (?,?,?,?,?,'admin',0,NOW()) ON DUPLICATE KEY UPDATE status=VALUES(status),remarks=VALUES(remarks),taken_by=VALUES(taken_by),taken_role='admin',time=NOW()",
-        [r.student_id, date, r.status, r.remarks || null, req.user.id]);
-    }
-    conn.release(); res.json({ message: 'Attendance saved' }); } catch (e) { res.status(500).json({ error: e.message }); }
+    try {
+      for (const r of records) {
+        await conn.query("INSERT INTO attendance (student_id,date,status,remarks,taken_by,taken_role,is_locked,time) VALUES (?,?,?,?,?,'admin',0,NOW()) ON DUPLICATE KEY UPDATE status=VALUES(status),remarks=VALUES(remarks),taken_by=VALUES(taken_by),taken_role='admin',time=NOW()",
+          [r.student_id, date, r.status, r.remarks || null, req.user.id]);
+      }
+      res.json({ message: 'Attendance saved' });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+    finally { conn.release(); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/attendance/students', async (req, res) => {
@@ -521,20 +544,24 @@ router.put('/vacate-requests/:id', async (req, res) => {
   try { const { status, remark } = req.body;
     if (status === 'Approved') {
       const [vr] = await q('SELECT * FROM vacate_requests WHERE id=?', [req.params.id]);
+      if (!vr) return res.status(404).json({ error: 'Request not found' });
       const [student] = await q('SELECT * FROM students WHERE id=?', [vr.student_id]);
-      const [user] = await q('SELECT username, email FROM users WHERE id=?', [student.user_id]);
       const [alloc] = await q('SELECT ra.*, r.room_no FROM room_allocations ra JOIN rooms r ON r.id=ra.room_id WHERE ra.student_id=? AND ra.status=?', [vr.student_id, 'Active']);
-      const conn = await pool.getConnection(); await conn.beginTransaction();
-      const related = JSON.stringify({ fees: await conn.query('SELECT * FROM fees WHERE student_id=?', [vr.student_id]), complaints: await conn.query('SELECT * FROM complaints WHERE student_id=?', [vr.student_id]), leaves: await conn.query('SELECT * FROM leaves WHERE student_id=?', [vr.student_id]) });
-      await conn.query('INSERT INTO vacated_students (original_id,original_user_id,name,roll_no,email,phone,address,gender,course,year,guardian_name,guardian_phone,admission_date,join_date,photo,last_room_no,vacate_reason,admin_remark,related_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        [student.id, student.user_id, student.name, student.roll_no, student.email, student.phone, student.address, student.gender, student.course, student.year, student.guardian_name, student.guardian_phone, student.admission_date, student.join_date, student.photo, alloc.length ? alloc.room_no : null, vr.reason, remark, related]);
-      if (alloc.length) { await conn.query("UPDATE room_allocations SET checkout_date=NOW(), status='CheckedOut' WHERE id=?", [alloc.id]); await conn.query('UPDATE rooms SET occupancy=occupancy-1 WHERE id=?', [alloc.room_id]); }
-      await conn.query('DELETE FROM fees WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM attendance WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM complaints WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM leaves WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM room_change_requests WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM students WHERE id=?', [vr.student_id]); await conn.query('DELETE FROM vacate_requests WHERE id=?', [req.params.id]); await conn.query('DELETE FROM users WHERE id=?', [student.user_id]);
-      await conn.commit(); conn.release();
+      const conn = await pool.getConnection();
+      try { await conn.beginTransaction();
+        const related = JSON.stringify({ fees: await conn.query('SELECT * FROM fees WHERE student_id=?', [vr.student_id]), complaints: await conn.query('SELECT * FROM complaints WHERE student_id=?', [vr.student_id]), leaves: await conn.query('SELECT * FROM leaves WHERE student_id=?', [vr.student_id]) });
+        await conn.query('INSERT INTO vacated_students (original_id,original_user_id,name,roll_no,email,phone,address,gender,course,year,guardian_name,guardian_phone,admission_date,join_date,photo,last_room_no,vacate_reason,admin_remark,related_data) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          [student.id, student.user_id, student.name, student.roll_no, student.email, student.phone, student.address, student.gender, student.course, student.year, student.guardian_name, student.guardian_phone, student.admission_date, student.join_date, student.photo, alloc.length ? alloc.room_no : null, vr.reason, remark, related]);
+        if (alloc.length) { await conn.query("UPDATE room_allocations SET checkout_date=NOW(), status='CheckedOut' WHERE id=?", [alloc[0].id]); await conn.query('UPDATE rooms SET occupancy=occupancy-1 WHERE id=?', [alloc[0].room_id]); }
+        await conn.query('DELETE FROM fees WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM attendance WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM complaints WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM leaves WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM room_change_requests WHERE student_id=?', [vr.student_id]); await conn.query('DELETE FROM students WHERE id=?', [vr.student_id]); await conn.query('DELETE FROM vacate_requests WHERE id=?', [req.params.id]); await conn.query('DELETE FROM users WHERE id=?', [student.user_id]);
+        await conn.commit(); res.json({ message: 'Updated' });
+      } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+      finally { conn.release(); }
     } else {
       await q('UPDATE vacate_requests SET status=?, admin_remark=? WHERE id=?', [status, remark, req.params.id]);
+      res.json({ message: 'Updated' });
     }
-    res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Room Changes
@@ -554,18 +581,23 @@ router.put('/room-changes/:id', async (req, res) => {
   try { const { status, remark } = req.body;
     if (status === 'Approved') {
       const [rcr] = await q('SELECT * FROM room_change_requests WHERE id=?', [req.params.id]);
-      const conn = await pool.getConnection(); await conn.beginTransaction();
-      await conn.query('UPDATE room_allocations SET room_id=?, allocation_date=CURDATE() WHERE student_id=? AND status=?', [rcr.requested_room_id, rcr.student_id, 'Active']);
-      await conn.query('UPDATE rooms SET occupancy=occupancy-1 WHERE id=?', [rcr.current_room_id]);
-      await conn.query('UPDATE rooms SET occupancy=occupancy+1 WHERE id=?', [rcr.requested_room_id]);
-      await conn.query("UPDATE rooms SET status='Available' WHERE id=? AND capacity>occupancy", [rcr.current_room_id]);
-      await conn.query("UPDATE rooms SET status='Full' WHERE id=? AND capacity<=occupancy", [rcr.requested_room_id]);
-      await conn.query('UPDATE room_change_requests SET status=?, admin_remark=? WHERE id=?', ['Approved', remark, req.params.id]);
-      await conn.commit(); conn.release();
+      if (!rcr) return res.status(404).json({ error: 'Request not found' });
+      const conn = await pool.getConnection();
+      try { await conn.beginTransaction();
+        await conn.query('UPDATE room_allocations SET room_id=?, allocation_date=CURDATE() WHERE student_id=? AND status=?', [rcr.requested_room_id, rcr.student_id, 'Active']);
+        await conn.query('UPDATE rooms SET occupancy=occupancy-1 WHERE id=?', [rcr.current_room_id]);
+        await conn.query('UPDATE rooms SET occupancy=occupancy+1 WHERE id=?', [rcr.requested_room_id]);
+        await conn.query("UPDATE rooms SET status='Available' WHERE id=? AND capacity>occupancy", [rcr.current_room_id]);
+        await conn.query("UPDATE rooms SET status='Full' WHERE id=? AND capacity<=occupancy", [rcr.requested_room_id]);
+        await conn.query('UPDATE room_change_requests SET status=?, admin_remark=? WHERE id=?', ['Approved', remark, req.params.id]);
+        await conn.commit(); res.json({ message: 'Updated' });
+      } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
+      finally { conn.release(); }
     } else {
       await q('UPDATE room_change_requests SET status=?, admin_remark=? WHERE id=?', [status, remark, req.params.id]);
+      res.json({ message: 'Updated' });
     }
-    res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Maintenance
