@@ -2,10 +2,17 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ],
-  "functions": {
-    "api/index.cjs": { "memory": 512, "maxDuration": 30 }
-  }
+    {
+      "source": "/api/(.*)",
+      "destination": "https://collegehostel-production.up.railway.app/api/$1"
+    },
+    {
+      "source": "/uploads/(.*)",
+      "destination": "https://collegehostel-production.up.railway.app/uploads/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
