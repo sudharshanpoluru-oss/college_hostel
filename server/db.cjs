@@ -2,8 +2,9 @@ const mysql = require('mysql2/promise');
 const url = require('url');
 
 function getConfig() {
-  if (process.env.MYSQL_URL) {
-    const u = new URL(process.env.MYSQL_URL);
+  const urlEnv = process.env.MYSQL_PUBLIC_URL || process.env.MYSQL_URL;
+  if (urlEnv) {
+    const u = new URL(urlEnv);
     return {
       host: u.hostname,
       port: parseInt(u.port, 10) || 3306,
