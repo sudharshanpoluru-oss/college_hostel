@@ -73,7 +73,7 @@ router.post('/students', async (req, res) => {
 router.put('/students/:id', async (req, res) => {
   try {
     const { name, roll_no, email, phone, address, gender, course, year, guardian_name, guardian_phone, admission_date, join_date, status } = req.body;
-    const hostel_type = gender === 'Male' ? 'boys' : gender === 'Female' ? 'girls' : '';
+    const hostel_type = gender === 'Male' ? 'boys' : gender === 'Female' ? 'girls' : null;
     await q('UPDATE students SET name=?,roll_no=?,email=?,phone=?,address=?,gender=?,course=?,year=?,guardian_name=?,guardian_phone=?,admission_date=?,join_date=?,status=?,hostel_type=? WHERE id=?',
       [name, roll_no, email, phone, address, gender, course, year, guardian_name, guardian_phone, admission_date, join_date, status, hostel_type, req.params.id]);
     res.json({ message: 'Updated' });
