@@ -2,6 +2,7 @@ const mysql = require('mysql2/promise');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const bcrypt = require('bcryptjs');
 
 function getConfig() {
   const urlEnv = process.env.MYSQL_PUBLIC_URL || process.env.MYSQL_URL;
@@ -48,6 +49,16 @@ module.exports = async function initDB() {
     const sql = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');
     await conn.query(sql);
     console.log('Database tables created.');
+  }
+
+  const [existing] = await conn.query("SELECT COUNT(*) AS cnt FROM users");
+  if (existing[0].cnt === 0) {
+    const hash = await bcrypt.hash('admin123', 10);
+    await conn.query(
+      "INSERT INTO users (username, email, password, role, status, approved) VALUES (?,?,?,?,?,?)",
+      ['admin', 'admin@hostel.com', hash, 'admin', 1, 1]
+    );
+    console.log('Default admin user created (admin / admin123)');
   }
   await conn.end();
 };
