@@ -27,9 +27,7 @@ const sections = [
     { to: '/admin/visitors', icon: 'people', label: 'Visitors' },
   ]},
   { heading: 'Analytics', links: [
-    { to: '/admin/analytics', icon: 'graph-up', label: 'Analytics' },
     { to: '/admin/occupancy', icon: 'building', label: 'Room Occupancy' },
-    { to: '/admin/search', icon: 'search', label: 'Global Search' },
   ]},
   { heading: 'Reports & More', links: [
     { to: '/admin/reports', icon: 'file-text', label: 'Reports' },

@@ -44,11 +44,9 @@ import VacatedStudents from './pages/admin/VacatedStudents';
 import Profile from './pages/admin/Profile';
 import Notifications from './pages/admin/Notifications';
 import DigitalIds from './pages/admin/DigitalIds';
-import Analytics from './pages/admin/Analytics';
 import Reports from './pages/admin/Reports';
 import Occupancy from './pages/admin/Occupancy';
 import Backup from './pages/admin/Backup';
-import Search from './pages/admin/Search';
 import StudentTimeline from './pages/admin/StudentTimeline';
 import RoomMaintenanceHistory from './pages/admin/RoomMaintenanceHistory';
 
@@ -139,11 +137,9 @@ export default function App() {
             <Route path="profile" element={<Profile />} />
             <Route path="notifications" element={<Notifications />} />
             <Route path="digital-ids" element={<DigitalIds />} />
-            <Route path="analytics" element={<Analytics />} />
             <Route path="reports" element={<Reports />} />
             <Route path="occupancy" element={<Occupancy />} />
             <Route path="backup" element={<Backup />} />
-            <Route path="search" element={<Search />} />
             <Route path="student-timeline" element={<StudentTimeline />} />
             <Route path="room-maintenance-history" element={<RoomMaintenanceHistory />} />
           </Route>

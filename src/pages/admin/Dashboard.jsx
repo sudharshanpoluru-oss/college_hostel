@@ -27,9 +27,7 @@ export default function AdminDashboard() {
         <Link to="/admin/notices" className="btn btn-warning btn-sm"><i className="bi bi-megaphone"></i> Create Notice</Link>
         <Link to="/admin/maintenance" className="btn btn-secondary btn-sm"><i className="bi bi-tools"></i> Maintenance</Link>
         <Link to="/admin/reports/students" className="btn btn-dark btn-sm"><i className="bi bi-file-text"></i> Generate Report</Link>
-        <Link to="/admin/analytics" className="btn btn-primary btn-sm"><i className="bi bi-graph-up"></i> Analytics</Link>
         <Link to="/admin/occupancy" className="btn btn-info btn-sm"><i className="bi bi-building"></i> Room Occupancy</Link>
-        <Link to="/admin/search" className="btn btn-outline-primary btn-sm"><i className="bi bi-search"></i> Global Search</Link>
       </div></div></div></div></div>
     </div>
   );
