@@ -67,9 +67,7 @@ import StudentEvents from './pages/student/Events';
 import RoomChange from './pages/student/RoomChange';
 import StudentEmergency from './pages/student/Emergency';
 import Vacate from './pages/student/Vacate';
-import Pay from './pages/student/Pay';
 import StudentNotificationsPage from './pages/student/Notifications';
-import UPIPay from './pages/student/UPIPay';
 
 // Warden pages
 import WardenDashboard from './pages/warden/Dashboard';
@@ -166,9 +164,7 @@ export default function App() {
             <Route path="room-change" element={<RoomChange />} />
             <Route path="emergency" element={<StudentEmergency />} />
             <Route path="vacate" element={<Vacate />} />
-            <Route path="pay" element={<Pay />} />
             <Route path="notifications" element={<StudentNotificationsPage />} />
-            <Route path="upi-pay" element={<UPIPay />} />
           </Route>
 
           {/* Warden routes */}

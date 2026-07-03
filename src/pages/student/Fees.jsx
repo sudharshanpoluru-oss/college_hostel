@@ -16,7 +16,7 @@ export default function StudentFees() {
         <tbody>{data.fees.map(f => <tr key={f.id}>
           <td>₹{f.total_fee}</td><td>₹{f.paid_amount}</td><td>₹{Number(f.total_fee - f.paid_amount).toFixed(2)}</td><td>{f.payment_mode || '-'}</td><td>{f.receipt_no || '-'}</td><td>{f.payment_date || '-'}</td>
           <td><span className={`badge bg-${f.status === 'Paid' ? 'success' : f.status === 'Partial' ? 'warning' : 'secondary'}`}>{f.status}</span></td>
-          <td>{f.status !== 'Paid' && <Link className="btn btn-sm btn-outline-primary" to={`/student/upi-pay?fee_id=${f.id}`}><i className="bi bi-phone"></i> UPI</Link>}</td>
+          <td></td>
         </tr>)}</tbody></table></div></div>
     </div>
   );

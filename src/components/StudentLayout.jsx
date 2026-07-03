@@ -17,8 +17,6 @@ const links = [
   { to: '/student/emergency', icon: 'exclamation-circle', label: 'Emergency' },
   { to: '/student/vacate', icon: 'box-arrow-right', label: 'Vacate' },
   { to: '/student/notifications', icon: 'bell', label: 'Notifications' },
-  { to: '/student/pay', icon: 'credit-card', label: 'Pay Fees' },
-  { to: '/student/upi-pay', icon: 'phone', label: 'UPI Pay' },
 ];
 
 export default function StudentLayout() {
