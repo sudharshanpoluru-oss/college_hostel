@@ -9,10 +9,11 @@ const router = express.Router();
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
-  try { const { username, password } = req.body;
+  try { const { username, password, email } = req.body;
     const [users] = await pool.query('SELECT u.* FROM users u LEFT JOIN students s ON s.user_id = u.id WHERE u.username = ? OR u.email = ? OR s.roll_no = ?', [username, username, username]);
     if (!users.length) return res.status(401).json({ error: 'Invalid credentials' });
     const user = users[0];
+    if (email && user.email !== email) return res.status(401).json({ error: 'Invalid credentials' });
     if (!user.status) return res.status(403).json({ error: 'Account disabled' });
     if (!user.approved) return res.status(403).json({ error: 'Account not approved' });
     if (!await bcrypt.compare(password, user.password)) return res.status(401).json({ error: 'Invalid credentials' });
