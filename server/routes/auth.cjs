@@ -29,8 +29,10 @@ router.post('/register', async (req, res) => {
   const conn = await pool.getConnection();
   try { await conn.beginTransaction();
     const [u] = await conn.query('INSERT INTO users (username, email, password, role, approved) VALUES (?,?,?,?,0)', [username, email, hash, 'student']);
-    await conn.query('INSERT INTO students (user_id, name, roll_no, email, phone, gender, course, year, address) VALUES (?,?,?,?,?,?,?,?,?)',
-      [u.insertId, name, roll_no, email, phone, gender || 'Male', course, year, address]);
+    const genderNorm = gender || 'Male';
+    const hostel_type = genderNorm === 'Male' ? 'boys' : genderNorm === 'Female' ? 'girls' : null;
+    await conn.query('INSERT INTO students (user_id, name, roll_no, email, phone, gender, course, year, address, hostel_type) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [u.insertId, name, roll_no, email, phone, genderNorm, course, year, address, hostel_type]);
     await conn.commit(); res.status(201).json({ message: 'Registration successful' });
   } catch (e) { await conn.rollback(); res.status(500).json({ error: e.message }); }
   finally { conn.release(); }
