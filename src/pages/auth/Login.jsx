@@ -7,7 +7,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [role, setRole] = useState(searchParams.get('role') || 'student');
-  const [form, setForm] = useState({ username: '', email: '', password: '', remember: false });
+  const [form, setForm] = useState({ username: '', password: '', remember: false });
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -24,13 +24,12 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
     try {
-      const payload = role === 'admin' ? { username: form.username, password: form.password, email: form.email } : { username: form.username, password: form.password };
-      const user = await login(payload.username, payload.password, payload.email);
+      const user = await login(form.username, form.password);
       navigate(user.role === 'admin' ? '/admin' : user.role === 'warden' ? '/warden' : '/student');
     } catch (err) { setError(err.response?.data?.error || 'Invalid credentials'); }
   };
 
-  const roleInfo = role === 'student' ? 'Sign in with your Roll Number and password' : role === 'admin' ? 'Sign in with your username, email and password' : 'Sign in with your credentials';
+  const roleInfo = role === 'student' ? 'Sign in with your Roll Number and password' : 'Sign in with your credentials';
 
   return (
     <div className="container">
@@ -71,21 +70,12 @@ export default function Login() {
 
                 <form onSubmit={handleSubmit}>
                   <div className="mb-3">
-                    <label className="form-label small fw-medium">{role === 'student' ? 'Roll Number / Username' : 'Username'}</label>
+                    <label className="form-label small fw-medium">{role === 'student' ? 'Roll Number / Username' : 'Username / Email'}</label>
                     <div className="input-group">
                       <span className="input-group-text"><i className="bi bi-person"></i></span>
-                      <input type="text" className="form-control" placeholder={role === 'student' ? 'Enter your roll number' : 'Enter your username'} value={form.username} onChange={e => setForm({...form, username: e.target.value})} required autoFocus />
+                      <input type="text" className="form-control" placeholder={role === 'student' ? 'Enter your roll number' : 'Enter username or email'} value={form.username} onChange={e => setForm({...form, username: e.target.value})} required autoFocus />
                     </div>
                   </div>
-                  {role === 'admin' && (
-                    <div className="mb-3">
-                      <label className="form-label small fw-medium">Email</label>
-                      <div className="input-group">
-                        <span className="input-group-text"><i className="bi bi-envelope"></i></span>
-                        <input type="email" className="form-control" placeholder="Enter your email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required />
-                      </div>
-                    </div>
-                  )}
                   <div className="mb-3">
                     <div className="d-flex justify-content-between">
                       <label className="form-label small fw-medium">Password</label>
