@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const initDB = require('./init-db.cjs');
 const authRoutes = require('./routes/auth.cjs');
 const publicRoutes = require('./routes/public.cjs');
 const adminRoutes = require('./routes/admin.cjs');
@@ -8,6 +9,7 @@ const studentRoutes = require('./routes/student.cjs');
 const wardenRoutes = require('./routes/warden.cjs');
 
 const app = express();
+initDB().catch(e => console.error('DB init error:', e.message));
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));

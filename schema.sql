@@ -1,0 +1,457 @@
+CREATE TABLE IF NOT EXISTS users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  email VARCHAR(255) NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  role ENUM('student','admin','warden') NOT NULL DEFAULT 'student',
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  approved TINYINT(1) NOT NULL DEFAULT 0,
+  approved_by INT DEFAULT NULL,
+  approved_at DATETIME DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  token VARCHAR(255) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used TINYINT(1) NOT NULL DEFAULT 0,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS students (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT DEFAULT NULL,
+  name VARCHAR(255) NOT NULL,
+  roll_no VARCHAR(50) NOT NULL UNIQUE,
+  email VARCHAR(255) DEFAULT NULL,
+  phone VARCHAR(20) DEFAULT NULL,
+  address TEXT DEFAULT NULL,
+  gender ENUM('Male','Female','Other') DEFAULT 'Male',
+  course VARCHAR(100) DEFAULT NULL,
+  year VARCHAR(50) DEFAULT NULL,
+  guardian_name VARCHAR(255) DEFAULT NULL,
+  guardian_phone VARCHAR(20) DEFAULT NULL,
+  admission_date DATE DEFAULT NULL,
+  join_date DATE DEFAULT NULL,
+  photo VARCHAR(255) DEFAULT NULL,
+  status ENUM('Active','Inactive') DEFAULT 'Active',
+  hostel_type ENUM('boys','girls') DEFAULT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS wardens (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT DEFAULT NULL,
+  name VARCHAR(255) NOT NULL,
+  phone VARCHAR(20) DEFAULT NULL,
+  email VARCHAR(255) DEFAULT NULL,
+  shift VARCHAR(50) DEFAULT NULL,
+  hostel_type ENUM('boys','girls') DEFAULT NULL,
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS rooms (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  room_no VARCHAR(20) NOT NULL,
+  floor INT DEFAULT NULL,
+  room_type VARCHAR(50) DEFAULT NULL,
+  hostel_type ENUM('boys','girls') DEFAULT NULL,
+  capacity INT NOT NULL DEFAULT 1,
+  occupancy INT NOT NULL DEFAULT 0,
+  fee_per_month DECIMAL(10,2) DEFAULT 0,
+  description TEXT DEFAULT NULL,
+  status ENUM('Available','Full','Maintenance') DEFAULT 'Available'
+);
+
+CREATE TABLE IF NOT EXISTS room_allocations (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  room_id INT NOT NULL,
+  bed_no VARCHAR(10) DEFAULT NULL,
+  allocation_date DATE NOT NULL,
+  status ENUM('Active','CheckedOut') DEFAULT 'Active',
+  checkout_date DATE DEFAULT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS fees (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  total_fee DECIMAL(10,2) NOT NULL DEFAULT 0,
+  paid_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  due_amount DECIMAL(10,2) DEFAULT 0,
+  payment_mode VARCHAR(50) DEFAULT NULL,
+  receipt_no VARCHAR(100) DEFAULT NULL,
+  payment_date DATETIME DEFAULT NULL,
+  utr VARCHAR(100) DEFAULT NULL,
+  status ENUM('Pending','Paid','Partial') DEFAULT 'Pending',
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS complaints (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  category VARCHAR(100) DEFAULT NULL,
+  description TEXT DEFAULT NULL,
+  priority ENUM('Low','Medium','High','Critical') DEFAULT 'Medium',
+  status VARCHAR(50) DEFAULT 'Pending',
+  admin_response TEXT DEFAULT NULL,
+  resolved_by INT DEFAULT NULL,
+  resolved_at DATETIME DEFAULT NULL,
+  resolution_date DATETIME DEFAULT NULL,
+  resolution_notes TEXT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (resolved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS complaint_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  complaint_id INT NOT NULL,
+  action VARCHAR(255) DEFAULT NULL,
+  performed_by INT DEFAULT NULL,
+  role VARCHAR(50) DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (complaint_id) REFERENCES complaints(id) ON DELETE CASCADE,
+  FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS leaves (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  from_date DATE NOT NULL,
+  to_date DATE NOT NULL,
+  reason TEXT DEFAULT NULL,
+  status ENUM('Pending','Approved','Rejected') DEFAULT 'Pending',
+  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  warden_id INT DEFAULT NULL,
+  approved_by INT DEFAULT NULL,
+  admin_remark TEXT DEFAULT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (warden_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  date DATE NOT NULL,
+  status ENUM('Present','Absent') NOT NULL,
+  remarks TEXT DEFAULT NULL,
+  taken_by INT DEFAULT NULL,
+  taken_role VARCHAR(50) DEFAULT NULL,
+  is_locked TINYINT(1) NOT NULL DEFAULT 0,
+  time DATETIME DEFAULT NULL,
+  UNIQUE KEY unique_attendance (student_id, date),
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (taken_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS notices (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  content TEXT NOT NULL,
+  priority VARCHAR(50) DEFAULT 'Normal',
+  target_role VARCHAR(50) DEFAULT 'all',
+  publish_date DATE DEFAULT NULL,
+  expiry_date DATE DEFAULT NULL,
+  expires_at DATETIME DEFAULT NULL,
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  created_by INT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS mess_menu (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  day VARCHAR(20) NOT NULL,
+  meal_type VARCHAR(50) NOT NULL,
+  menu_items TEXT NOT NULL,
+  date DATE DEFAULT NULL,
+  status TINYINT(1) NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS hostel_events (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) NOT NULL,
+  description TEXT DEFAULT NULL,
+  event_date DATE DEFAULT NULL,
+  event_time VARCHAR(50) DEFAULT NULL,
+  location VARCHAR(255) DEFAULT NULL,
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  created_by INT DEFAULT NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS visitor_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  visitor_name VARCHAR(255) NOT NULL,
+  contact VARCHAR(20) DEFAULT NULL,
+  purpose VARCHAR(255) DEFAULT NULL,
+  student_id INT DEFAULT NULL,
+  check_in DATETIME DEFAULT NULL,
+  check_out DATETIME DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
+  status VARCHAR(50) DEFAULT NULL,
+  warden_approved TINYINT(1) DEFAULT 0,
+  created_by INT DEFAULT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS management_staff (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  designation VARCHAR(255) DEFAULT NULL,
+  description TEXT DEFAULT NULL,
+  icon VARCHAR(255) DEFAULT NULL,
+  sort_order INT DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS vacated_students (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  original_id INT DEFAULT NULL,
+  original_user_id INT DEFAULT NULL,
+  name VARCHAR(255) DEFAULT NULL,
+  roll_no VARCHAR(50) DEFAULT NULL,
+  email VARCHAR(255) DEFAULT NULL,
+  phone VARCHAR(20) DEFAULT NULL,
+  address TEXT DEFAULT NULL,
+  gender VARCHAR(20) DEFAULT NULL,
+  course VARCHAR(100) DEFAULT NULL,
+  year VARCHAR(50) DEFAULT NULL,
+  guardian_name VARCHAR(255) DEFAULT NULL,
+  guardian_phone VARCHAR(20) DEFAULT NULL,
+  admission_date DATE DEFAULT NULL,
+  join_date DATE DEFAULT NULL,
+  photo VARCHAR(255) DEFAULT NULL,
+  last_room_no VARCHAR(20) DEFAULT NULL,
+  vacate_reason TEXT DEFAULT NULL,
+  admin_remark TEXT DEFAULT NULL,
+  related_data JSON DEFAULT NULL,
+  vacated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS room_maintenance_history (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  room_id INT NOT NULL,
+  problem TEXT DEFAULT NULL,
+  solution TEXT DEFAULT NULL,
+  category VARCHAR(100) DEFAULT NULL,
+  completed_by VARCHAR(255) DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
+  cost DECIMAL(10,2) DEFAULT 0,
+  repair_date DATE DEFAULT NULL,
+  created_by INT DEFAULT NULL,
+  FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS maintenance_requests (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT DEFAULT NULL,
+  room_id INT DEFAULT NULL,
+  category VARCHAR(100) DEFAULT NULL,
+  description TEXT DEFAULT NULL,
+  priority ENUM('Low','Medium','High','Emergency') DEFAULT 'Medium',
+  status VARCHAR(50) DEFAULT 'Pending',
+  assigned_to INT DEFAULT NULL,
+  assigned_date DATETIME DEFAULT NULL,
+  completed_date DATETIME DEFAULT NULL,
+  completion_remarks TEXT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL,
+  FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE SET NULL,
+  FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS room_change_requests (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  current_room_id INT DEFAULT NULL,
+  requested_room_id INT DEFAULT NULL,
+  reason TEXT DEFAULT NULL,
+  status VARCHAR(50) DEFAULT 'Pending',
+  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  admin_remark TEXT DEFAULT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (current_room_id) REFERENCES rooms(id) ON DELETE SET NULL,
+  FOREIGN KEY (requested_room_id) REFERENCES rooms(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS emergency_reports (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  category VARCHAR(100) DEFAULT NULL,
+  location VARCHAR(255) DEFAULT NULL,
+  description TEXT DEFAULT NULL,
+  priority ENUM('Low','Medium','High','Critical') DEFAULT 'High',
+  status VARCHAR(50) DEFAULT 'Open',
+  assigned_to INT DEFAULT NULL,
+  resolution TEXT DEFAULT NULL,
+  resolved_at DATETIME DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS emergency_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  emergency_id INT DEFAULT NULL,
+  student_id INT DEFAULT NULL,
+  severity VARCHAR(50) DEFAULT NULL,
+  status VARCHAR(50) DEFAULT NULL,
+  reported_at DATETIME DEFAULT NULL,
+  response_notes TEXT DEFAULT NULL,
+  responded_by INT DEFAULT NULL,
+  responded_at DATETIME DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (emergency_id) REFERENCES emergency_reports(id) ON DELETE SET NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL,
+  FOREIGN KEY (responded_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS vacate_requests (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  reason TEXT DEFAULT NULL,
+  status VARCHAR(50) DEFAULT 'Pending',
+  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  admin_remark TEXT DEFAULT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) DEFAULT NULL,
+  phone VARCHAR(20) DEFAULT NULL,
+  subject VARCHAR(255) DEFAULT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS student_digital_ids (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL UNIQUE,
+  id_number VARCHAR(50) NOT NULL,
+  blood_group VARCHAR(10) DEFAULT NULL,
+  emergency_contact VARCHAR(20) DEFAULT NULL,
+  emergency_name VARCHAR(255) DEFAULT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS backup_history (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  filename VARCHAR(255) NOT NULL,
+  filepath VARCHAR(500) DEFAULT NULL,
+  filesize BIGINT DEFAULT 0,
+  type VARCHAR(50) DEFAULT 'manual',
+  created_by INT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS night_roll_call (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  date DATE NOT NULL,
+  status ENUM('Present','Absent') NOT NULL,
+  remarks TEXT DEFAULT NULL,
+  marked_by INT DEFAULT NULL,
+  marked_at DATETIME DEFAULT NULL,
+  UNIQUE KEY unique_roll_call (student_id, date),
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (marked_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS room_inspections (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  room_id INT NOT NULL,
+  inspector_id INT DEFAULT NULL,
+  inspection_date DATE DEFAULT NULL,
+  cleanliness_rating INT DEFAULT NULL,
+  maintenance_notes TEXT DEFAULT NULL,
+  action_taken TEXT DEFAULT NULL,
+  FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
+  FOREIGN KEY (inspector_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS medical_records (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  reported_by INT DEFAULT NULL,
+  symptoms TEXT DEFAULT NULL,
+  diagnosis TEXT DEFAULT NULL,
+  treatment TEXT DEFAULT NULL,
+  medication TEXT DEFAULT NULL,
+  follow_up_date DATE DEFAULT NULL,
+  notes TEXT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (reported_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS discipline_records (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT NOT NULL,
+  reported_by INT DEFAULT NULL,
+  incident_type VARCHAR(100) DEFAULT NULL,
+  description TEXT DEFAULT NULL,
+  severity VARCHAR(50) DEFAULT NULL,
+  action_taken TEXT DEFAULT NULL,
+  remarks TEXT DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+  FOREIGN KEY (reported_by) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  message TEXT DEFAULT NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS visitors (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT DEFAULT NULL,
+  name VARCHAR(255) DEFAULT NULL,
+  purpose VARCHAR(255) DEFAULT NULL,
+  entry_time DATETIME DEFAULT NULL,
+  FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS gallery (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(255) DEFAULT NULL,
+  image VARCHAR(255) DEFAULT NULL,
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS testimonials (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) DEFAULT NULL,
+  content TEXT DEFAULT NULL,
+  rating INT DEFAULT NULL,
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS faq (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  question TEXT DEFAULT NULL,
+  answer TEXT DEFAULT NULL,
+  sort_order INT DEFAULT 0,
+  status TINYINT(1) NOT NULL DEFAULT 1
+);
