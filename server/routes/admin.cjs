@@ -692,10 +692,11 @@ router.get('/digital-ids', async (req, res) => {
 router.get('/digital-ids/:studentId', async (req, res) => {
   try { const rows = await q('SELECT s.*, r.room_no, r.room_type, ra.bed_no FROM students s LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status=? LEFT JOIN rooms r ON r.id=ra.room_id WHERE s.id=?', ['Active', req.params.studentId]);
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    let [did] = await q('SELECT * FROM student_digital_ids WHERE student_id=?', [req.params.studentId]);
-    if (!did.length) { const idNum = `HSTL${String(req.params.studentId).padStart(5, '0')}`; await q('INSERT INTO student_digital_ids (student_id,id_number) VALUES (?,?)', [req.params.studentId, idNum]); [did] = await q('SELECT * FROM student_digital_ids WHERE student_id=?', [req.params.studentId]); }
+    const didRows = await q('SELECT * FROM student_digital_ids WHERE student_id=?', [req.params.studentId]);
+    let did;
+    if (!didRows.length) { const idNum = `HSTL${String(req.params.studentId).padStart(5, '0')}`; await q('INSERT INTO student_digital_ids (student_id,id_number) VALUES (?,?)', [req.params.studentId, idNum]); [did] = await q('SELECT * FROM student_digital_ids WHERE student_id=?', [req.params.studentId]); } else { [did] = didRows; }
     const qrData = `${rows[0].name}|${rows[0].roll_no}|${rows[0].room_no}`;
-    res.json({ student: rows[0], digitalId: did[0], qrData }); } catch (e) { res.status(500).json({ error: e.message }); }
+    res.json({ student: rows[0], digitalId: did, qrData }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/digital-ids/:studentId', async (req, res) => {

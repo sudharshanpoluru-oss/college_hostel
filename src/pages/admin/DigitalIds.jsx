@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'; import api from '../../api/client';
 export default function DigitalIds() {
-  const [data, setData] = useState({ students: [], total: 0 }); const [search, setSearch] = useState(''); const [viewId, setViewId] = useState(null); const [card, setCard] = useState(null); const [form, setForm] = useState({ blood_group: '', emergency_contact: '', emergency_name: '' });
-  const load = () => { api.get('/admin/digital-ids', { params: { search } }).then(r => setData(r.data)); };
+  const [data, setData] = useState({ students: [], total: 0 }); const [search, setSearch] = useState(''); const [viewId, setViewId] = useState(null); const [card, setCard] = useState(null); const [form, setForm] = useState({ blood_group: '', emergency_contact: '', emergency_name: '' }); const [err, setErr] = useState(null);
+  const load = () => { api.get('/admin/digital-ids', { params: { search } }).then(r => setData(r.data)).catch(e => setErr(e.response?.data?.error || e.message)); };
   useEffect(() => { load(); }, [search]);
-  const viewCard = async (id) => { const r = await api.get(`/admin/digital-ids/${id}`); setCard(r.data); setViewId(id); setForm({ blood_group: r.data.digitalId?.blood_group || '', emergency_contact: r.data.digitalId?.emergency_contact || '', emergency_name: r.data.digitalId?.emergency_name || '' }); };
-  const updateId = async () => { await api.put(`/admin/digital-ids/${viewId}`, form); alert('Updated!'); viewCard(viewId); };
+  const viewCard = async (id) => { setErr(null); try { const r = await api.get(`/admin/digital-ids/${id}`); setCard(r.data); setViewId(id); setForm({ blood_group: r.data.digitalId?.blood_group || '', emergency_contact: r.data.digitalId?.emergency_contact || '', emergency_name: r.data.digitalId?.emergency_name || '' }); } catch (e) { setErr(e.response?.data?.error || e.message); } };
+  const updateId = async () => { try { await api.put(`/admin/digital-ids/${viewId}`, form); alert('Updated!'); viewCard(viewId); } catch (e) { setErr(e.response?.data?.error || e.message); } };
   return (
     <div>
       <h4 className="fw-bold mb-3"><i className="bi bi-credit-card me-2"></i>Digital ID Cards</h4>
+      {err && <div className="alert alert-danger">{err}</div>}
       <input className="form-control mb-3" style={{ width: 300 }} placeholder="Search student..." value={search} onChange={e => setSearch(e.target.value)} />
       <div className="row g-4">
         <div className="col-md-6">
