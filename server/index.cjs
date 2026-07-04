@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -9,7 +10,6 @@ const studentRoutes = require('./routes/student.cjs');
 const wardenRoutes = require('./routes/warden.cjs');
 
 const app = express();
-initDB().then(() => console.log('DB initialized')).catch(e => console.error('DB init error:', e.message));
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
@@ -28,4 +28,10 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+initDB().then(() => {
+  console.log('DB initialized');
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}).catch(e => {
+  console.error('DB init error:', e.message);
+  process.exit(1);
+});

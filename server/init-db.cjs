@@ -29,9 +29,10 @@ async function waitForDB(retries = 10, delay = 3000) {
   const cfg = getConfig();
   for (let i = 0; i < retries; i++) {
     try {
-      const conn = await mysql.createConnection({ ...cfg, multipleStatements: true, connectTimeout: 5000 });
+      const conn = await mysql.createConnection({ ...cfg, multipleStatements: true, connectTimeout: 10000 });
       return conn;
     } catch (e) {
+      if (e.code === 'ER_BAD_DB_ERROR') return null;
       if (i < retries - 1) {
         console.log(`Waiting for DB (attempt ${i + 1}/${retries})...`);
         await new Promise(r => setTimeout(r, delay));
@@ -42,8 +43,23 @@ async function waitForDB(retries = 10, delay = 3000) {
   }
 }
 
+async function ensureDatabase(conn) {
+  const cfg = getConfig();
+  await conn.query(`CREATE DATABASE IF NOT EXISTS \`${cfg.database}\``);
+  await conn.query(`USE \`${cfg.database}\``);
+}
+
 module.exports = async function initDB() {
-  const conn = await waitForDB();
+  const cfg = getConfig();
+  let conn = await waitForDB();
+  if (!conn) {
+    const noDbCfg = { ...cfg };
+    delete noDbCfg.database;
+    conn = await mysql.createConnection({ ...noDbCfg, multipleStatements: true, connectTimeout: 10000 });
+    await ensureDatabase(conn);
+    await conn.end();
+    conn = await waitForDB();
+  }
   const [tables] = await conn.query("SHOW TABLES LIKE 'users'");
   if (tables.length === 0) {
     const sql = fs.readFileSync(path.join(__dirname, '..', 'schema.sql'), 'utf8');

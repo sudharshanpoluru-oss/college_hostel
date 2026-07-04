@@ -12,7 +12,6 @@ const links = [
   { to: '/warden/emergency', icon: 'exclamation-circle', label: 'Emergency' },
   { to: '/warden/notices', icon: 'megaphone', label: 'Notices' },
   { to: '/warden/daily-report', icon: 'file-text', label: 'Daily Report' },
-  { to: '/warden/night-roll-call', icon: 'moon', label: 'Night Roll Call' },
   { to: '/warden/room-inspection', icon: 'building', label: 'Room Inspection' },
   { to: '/warden/medical', icon: 'heart-pulse', label: 'Medical' },
   { to: '/warden/discipline', icon: 'shield', label: 'Discipline' },

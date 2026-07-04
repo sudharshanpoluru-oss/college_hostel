@@ -787,13 +787,13 @@ router.get('/student-timeline/:studentId', async (req, res) => {
     const att = await q("SELECT date, status FROM attendance WHERE student_id=? ORDER BY date DESC LIMIT 100", [sid]);
     att.forEach(a => { events.push({ type: 'attendance', date: a.date, title: `Attendance: ${a.status}`, description: `Marked ${a.status}`, status: a.status, month: new Date(a.date).toLocaleString('en', { month: 'long', year: 'numeric' }) }); });
     // Leaves
-    const lv = await q('SELECT applied_at, start_date, end_date, status, reason FROM leaves WHERE student_id=? ORDER BY applied_at', [sid]);
-    lv.forEach(l => { events.push({ type: 'leave', date: l.applied_at, title: 'Leave Application', description: `${l.reason} (${l.start_date} to ${l.end_date})`, status: l.status, month: new Date(l.applied_at).toLocaleString('en', { month: 'long', year: 'numeric' }) }); });
+    const lv = await q('SELECT applied_at, from_date, to_date, status, reason FROM leaves WHERE student_id=? ORDER BY applied_at', [sid]);
+    lv.forEach(l => { events.push({ type: 'leave', date: l.applied_at, title: 'Leave Application', description: `${l.reason} (${l.from_date} to ${l.to_date})`, status: l.status, month: new Date(l.applied_at).toLocaleString('en', { month: 'long', year: 'numeric' }) }); });
     // Complaints
     const comp = await q('SELECT created_at, title, description, status, priority FROM complaints WHERE student_id=? ORDER BY created_at', [sid]);
     comp.forEach(c => { events.push({ type: 'complaint', date: c.created_at, title: `Complaint: ${c.title}`, description: c.description, status: c.status, month: new Date(c.created_at).toLocaleString('en', { month: 'long', year: 'numeric' }) }); });
     // Visitors
-    const vis = await q('SELECT v.entry_time, v.name AS vname, v.purpose FROM visitors v WHERE v.student_id=? ORDER BY v.entry_time', [sid]);
+    const vis = await q('SELECT v.check_in AS entry_time, v.visitor_name AS vname, v.purpose FROM visitor_logs v WHERE v.student_id=? ORDER BY v.check_in', [sid]);
     vis.forEach(v => { events.push({ type: 'visitor', date: v.entry_time, title: `Visitor: ${v.vname}`, description: v.purpose, month: new Date(v.entry_time).toLocaleString('en', { month: 'long', year: 'numeric' }) }); });
     // Fees
     const fee = await q("SELECT payment_date, paid_amount, total_fee, status FROM fees WHERE student_id=? ORDER BY payment_date", [sid]);

@@ -20,7 +20,7 @@ export default function Visitors() {
       <div className="card"><div className="card-body p-0"><table className="table table-sm mb-0">
         <thead><tr><th>Visitor</th><th>Contact</th><th>Purpose</th><th>Student</th><th>Check In</th><th>Check Out</th><th>Action</th></tr></thead>
         <tbody>{data.visitors.map(v => <tr key={v.id}>
-          <td>{v.visitor_name}</td><td>{v.contact}</td><td>{v.purpose}</td><td>{v.student_name || '-'}</td><td>{v.check_in}</td><td>{v.check_out || '-'}</td>
+          <td>{v.visitor_name}</td><td>{v.contact}</td><td>{v.purpose}</td><td>{v.student_name || '-'}</td><td>{v.check_in?.split(' ')[0]}</td><td>{v.check_out?.split(' ')[0] || '-'}</td>
           <td>{!v.check_out && <button className="btn btn-sm btn-outline-warning" onClick={() => handleCheckout(v.id)}>Check Out</button>}</td>
         </tr>)}</tbody></table></div></div>
     </div>

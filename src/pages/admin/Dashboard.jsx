@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'; import api from '../../api/client'; import { Link } from 'react-router-dom';
 export default function AdminDashboard() {
   const [data, setData] = useState({ stats: {}, recentFees: [], recentComplaints: [], recentStudents: [] });
-  useEffect(() => { api.get('/admin/dashboard').then(r => setData(r.data)).catch(() => {}); }, []);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { api.get('/admin/dashboard').then(r => setData(r.data)).catch(() => {}).finally(() => setLoading(false)); }, []);
   const s = data.stats;
+  if (loading) return <div className="text-center py-5"><div className="spinner-border" style={{ width: '3rem', height: '3rem' }}></div></div>;
   return (
     <div>
       <h4 className="fw-bold mb-4"><i className="bi bi-speedometer2 me-2"></i>Admin Dashboard</h4>

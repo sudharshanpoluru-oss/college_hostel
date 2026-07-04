@@ -108,11 +108,27 @@ router.put('/maintenance/:id/status', async (req, res) => {
 
 // Visitors
 router.get('/visitors', async (req, res) => {
-  try { const data = await q('SELECT v.*, s.name AS student_name, s.roll_no FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id ORDER BY v.check_in DESC LIMIT 50'); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const { search, page = 1, limit = 20 } = req.query; const offset = (page - 1) * limit;
+    let where = '', params = [];
+    if (search) { where = 'WHERE v.visitor_name LIKE ? OR v.contact LIKE ?'; params.push(`%${search}%`, `%${search}%`); }
+    const [count] = await q(`SELECT COUNT(*) c FROM visitor_logs v ${where}`, params);
+    const data = await q(`SELECT v.*, s.name AS student_name, s.roll_no FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id ${where} ORDER BY v.check_in DESC LIMIT ? OFFSET ?`, [...params, +limit, +offset]);
+    const students = await q("SELECT id,name,roll_no FROM students WHERE status='Active' ORDER BY name");
+    res.json({ visitors: data, total: count.c, students, page: +page }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/visitors', async (req, res) => {
+  try { const { visitor_name, contact, purpose, student_id, remarks } = req.body;
+    await q('INSERT INTO visitor_logs (visitor_name,contact,purpose,student_id,check_in,remarks,created_by) VALUES (?,?,?,?,NOW(),?,?)', [visitor_name, contact, purpose, student_id || null, remarks, req.user.id]);
+    res.status(201).json({ message: 'Visitor logged' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/visitors/:id/approve', async (req, res) => {
   try { await q("UPDATE visitor_logs SET status='Approved', warden_approved=1 WHERE id=?", [req.params.id]); res.json({ message: 'Approved' }); } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.put('/visitors/:id/checkout', async (req, res) => {
+  try { await q("UPDATE visitor_logs SET check_out=NOW() WHERE id=? AND check_out IS NULL", [req.params.id]); res.json({ message: 'Checked out' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Emergency
@@ -157,30 +173,9 @@ router.get('/daily-report', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Night Roll Call
-router.get('/night-roll-call', async (req, res) => {
-  try { const { date } = req.query; const d = date || new Date().toISOString().split('T')[0];
-    const wardenRows = await q('SELECT hostel_type FROM wardens WHERE user_id=?', [req.user.id]);
-    const hostelType = wardenRows.length ? wardenRows[0].hostel_type : null;
-    const filter = hostelType ? 'AND s.hostel_type=?' : ''; const p = hostelType ? [hostelType] : [];
-    const [totalStudents] = await q(`SELECT COUNT(*) c FROM students s WHERE s.status='Active' ${filter}`, p);
-    const [present] = await q(`SELECT COUNT(*) c FROM night_roll_call nrc JOIN students s ON s.id=nrc.student_id WHERE nrc.date=? AND nrc.status='Present' ${filter}`, [d, ...p]);
-    const [absent] = await q(`SELECT COUNT(*) c FROM night_roll_call nrc JOIN students s ON s.id=nrc.student_id WHERE nrc.date=? AND nrc.status='Absent' ${filter}`, [d, ...p]);
-    const data = await q(`SELECT nrc.*, s.name, s.roll_no, r.room_no FROM night_roll_call nrc JOIN students s ON s.id=nrc.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id WHERE nrc.date=? ${filter} ORDER BY r.room_no, s.name`, [d, ...p]);
-    const allStudents = await q(`SELECT s.id, s.name, s.roll_no, r.room_no FROM students s LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id WHERE s.status='Active' ${filter} ORDER BY r.room_no, s.name`, p);
-    res.json({ date: d, totalStudents: totalStudents.c, present: present.c, absent: absent.c, records: data, allStudents });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-router.post('/night-roll-call', async (req, res) => {
-  try { const { date, records } = req.body;
-    for (const r of records) { await q("INSERT INTO night_roll_call (student_id,date,status,remarks,marked_by,marked_at) VALUES (?,?,?,?,?,NOW()) ON DUPLICATE KEY UPDATE status=VALUES(status),remarks=VALUES(remarks),marked_by=VALUES(marked_by),marked_at=NOW()", [r.student_id, date, r.status, r.remarks || null, req.user.id]); }
-    res.json({ message: 'Saved' }); } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 // Room Inspection
 router.get('/room-inspection', async (req, res) => {
-  try { const data = await q('SELECT * FROM room_inspections ORDER BY inspection_date DESC'); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const data = await q('SELECT r.*, ri.cleanliness_rating, ri.maintenance_notes, ri.action_taken, ri.inspection_date FROM rooms r LEFT JOIN room_inspections ri ON ri.room_id=r.id ORDER BY r.floor, r.room_no'); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/room-inspection', async (req, res) => {

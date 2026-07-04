@@ -78,7 +78,6 @@ import WardenVisitors from './pages/warden/Visitors';
 import WardenEmergency from './pages/warden/Emergency';
 import WardenNotices from './pages/warden/Notices';
 import DailyReport from './pages/warden/DailyReport';
-import NightRollCall from './pages/warden/NightRollCall';
 import RoomInspection from './pages/warden/RoomInspection';
 import Medical from './pages/warden/Medical';
 import Discipline from './pages/warden/Discipline';
@@ -175,7 +174,6 @@ export default function App() {
             <Route path="emergency" element={<WardenEmergency />} />
             <Route path="notices" element={<WardenNotices />} />
             <Route path="daily-report" element={<DailyReport />} />
-            <Route path="night-roll-call" element={<NightRollCall />} />
             <Route path="room-inspection" element={<RoomInspection />} />
             <Route path="medical" element={<Medical />} />
             <Route path="discipline" element={<Discipline />} />
