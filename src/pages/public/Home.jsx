@@ -36,6 +36,7 @@ export default function Home() {
           <div className="d-flex flex-wrap justify-content-center gap-3">
             <Link to="/rooms" className="btn btn-light btn-lg fw-bold px-4"><i className="bi bi-door-open"></i> View Rooms</Link>
             <Link to="/contact" className="btn btn-outline-light btn-lg fw-bold px-4"><i className="bi bi-envelope"></i> Contact Us</Link>
+            <a href="/app-release.apk" download className="btn btn-outline-light btn-lg fw-bold px-4"><i className="bi bi-phone"></i> Download Mobile App</a>
             {!user && <Link to="/register" className="btn btn-success btn-lg fw-bold px-4"><i className="bi bi-person-plus"></i> Register Now</Link>}
           </div>
         </div>
