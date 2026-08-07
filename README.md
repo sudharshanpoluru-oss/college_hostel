@@ -100,9 +100,9 @@ college_hostel/
 
 ## 🌐 Deployment
 
-- **Frontend** → Vercel (auto-deploys from `main` branch)
-- **Backend** → Railway (Express server + Supabase as the database)
-- API calls from Vercel are proxied to the Railway backend via rewrites in `vercel.json`
+- **Frontend + API** → Vercel (auto-deploys from `main` branch). The Express app in `api/index.cjs` runs as a serverless function; `vercel.json` routes `/api/*` to it.
+- **Database** → Supabase (PostgreSQL)
+- On Vercel, set the environment variable `DATABASE_URL` to your Supabase connection string (Settings → Environment Variables → Redeploy).
 
 ---
 
