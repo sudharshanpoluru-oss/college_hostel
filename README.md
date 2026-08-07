@@ -60,8 +60,8 @@ npm install
 
 2. Set your Supabase connection string in `.env`:
    ```
-   DATABASE_URL=postgresql://postgres.kmyewmtcqbxgfymnahi:YOUR_DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
-   SUPABASE_URL=https://kmyewmcqxgfymnahi.supabase.co
+   DATABASE_URL=postgresql://postgres.kmyewmtcqlbxgfymnahi:YOUR_DB_PASSWORD@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres
+   SUPABASE_URL=https://kmyewmtcqlbxgfymnahi.supabase.co
    SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
    ```
    Find it under **Project Settings → Database → Connection strings**.
@@ -100,7 +100,7 @@ college_hostel/
 
 ## 🌐 Deployment
 
-- **Frontend + API** → Vercel (auto-deploys from `main` branch). The Express app in `api/index.cjs` runs as a serverless function; `vercel.json` routes `/api/*` to it.
+- **Frontend + API** → Vercel (auto-deploys from `master` branch). The Express app in `api/index.js` runs as a serverless function; `vercel.json` routes `/api/*` to it.
 - **Database** → Supabase (PostgreSQL)
 - On Vercel, set the environment variable `DATABASE_URL` to your Supabase connection string (Settings → Environment Variables → Redeploy).
 
