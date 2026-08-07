@@ -8,13 +8,15 @@ export default function Home() {
   const [data, setData] = useState({ stats: { rooms: 0, students: 0 }, rooms: [], gallery: [], events: [], notices: [], staff: [], testimonials: [], faqs: [] });
 
   useEffect(() => {
+    const arr = v => (Array.isArray(v) ? v : []);
+    const statsObj = v => (v && typeof v === 'object' && !Array.isArray(v) ? { rooms: Number(v.rooms) || 0, students: Number(v.students) || 0 } : { rooms: 0, students: 0 });
     Promise.all([
       api.get('/public/stats'), api.get('/public/rooms'), api.get('/public/gallery'),
       api.get('/public/events'), api.get('/public/notices'), api.get('/public/staff'),
       api.get('/public/testimonials'), api.get('/public/faqs')
     ]).then(([s, r, g, e, n, st, t, f]) => setData({
-      stats: s.data, rooms: r.data, gallery: g.data, events: e.data,
-      notices: n.data, staff: st.data, testimonials: t.data, faqs: f.data
+      stats: statsObj(s.data), rooms: arr(r.data), gallery: arr(g.data), events: arr(e.data),
+      notices: arr(n.data), staff: arr(st.data), testimonials: arr(t.data), faqs: arr(f.data)
     })).catch(() => {});
   }, []);
 
