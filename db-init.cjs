@@ -1,26 +1,31 @@
-const mysql = require('mysql2/promise');
+require('dotenv').config();
+const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const { connectionConfig } = require('./server/db.cjs');
 
 async function main() {
-  const conn = await mysql.createConnection({
-    host: process.env.MYSQLHOST || process.env.DB_HOST || 'localhost',
-    port: process.env.MYSQLPORT || process.env.DB_PORT || 3306,
-    user: process.env.MYSQLUSER || process.env.DB_USER || 'root',
-    password: process.env.MYSQLPASSWORD || process.env.DB_PASSWORD || '',
-    database: process.env.MYSQLDATABASE || process.env.DB_NAME || 'hostel_db',
-    multipleStatements: true,
-  });
+  if (!process.env.DATABASE_URL) {
+    console.log('Missing DATABASE_URL. Add your Supabase connection string to .env first.');
+    process.exit(1);
+  }
+  const client = new Client({ ...connectionConfig });
+  await client.connect();
 
-  const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  await conn.query(sql);
-  console.log('All tables created successfully!');
+  const sql = fs.readFileSync(path.join(__dirname, 'schema.pg.sql'), 'utf8');
+  const statements = sql.split(/;\s*\r?\n/).map(s => s.trim()).filter(Boolean);
+  let created = 0;
+  for (const stmt of statements) {
+    await client.query(stmt);
+    if (/^\s*CREATE TABLE/i.test(stmt)) created++;
+  }
+  console.log(`All tables created successfully! (${created} tables)`);
 
-  const [rows] = await conn.query('SHOW TABLES');
-  console.log(`\nTables created (${rows.length}):`);
-  rows.forEach(r => console.log(` - ${Object.values(r)[0]}`));
+  const tables = await client.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename");
+  console.log(`\nTables created (${tables.rows.length}):`);
+  tables.rows.forEach(r => console.log(` - ${r.tablename}`));
 
-  await conn.end();
+  await client.end();
 }
 
 main().catch(e => { console.error('Error:', e.message); process.exit(1); });

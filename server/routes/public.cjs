@@ -18,11 +18,11 @@ router.get('/gallery', async (req, res) => {
 });
 
 router.get('/events', async (req, res) => {
-  try { const events = await q("SELECT * FROM hostel_events WHERE status=1 AND event_date >= CURDATE() ORDER BY event_date ASC LIMIT 3"); res.json(events); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const events = await q("SELECT * FROM hostel_events WHERE status=1 AND event_date >= CURRENT_DATE ORDER BY event_date ASC LIMIT 3"); res.json(events); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/notices', async (req, res) => {
-  try { const notices = await q("SELECT * FROM notices WHERE status=1 AND (expiry_date IS NULL OR expiry_date >= CURDATE()) ORDER BY publish_date DESC LIMIT 3"); res.json(notices); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const notices = await q("SELECT * FROM notices WHERE status=1 AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE) ORDER BY publish_date DESC LIMIT 3"); res.json(notices); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.get('/staff', async (req, res) => {
@@ -44,7 +44,7 @@ router.post('/contact', async (req, res) => {
 });
 
 router.get('/mess-menu', async (req, res) => {
-  try { const menu = await q('SELECT * FROM mess_menu WHERE status=1 ORDER BY FIELD(day,"Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"), meal_type');
+  try { const menu = await q("SELECT * FROM mess_menu WHERE status=1 ORDER BY COALESCE(array_position(ARRAY['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'], day), 99), meal_type");
     res.json(menu); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

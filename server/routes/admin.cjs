@@ -1,11 +1,16 @@
 const express = require('express');
 const pool = require('../db.cjs');
-const fs = require('fs');
 const { authenticate, authorize } = require('../middleware/auth.cjs');
 const router = express.Router();
 
 router.use(authenticate, authorize('admin'));
 const q = async (sql, params = []) => { const [r] = await pool.query(sql, params); return r; };
+
+// mysql2 allowed `SET ?` with a JS object; Postgres needs an explicit column list.
+const buildSet = (obj) => {
+  const keys = Object.keys(obj);
+  return { clause: keys.map(k => `${k}=?`).join(', '), params: keys.map(k => obj[k]) };
+};
 
 // Dashboard
 router.get('/dashboard', async (req, res) => {
@@ -17,8 +22,8 @@ router.get('/dashboard', async (req, res) => {
     const [fees] = await q("SELECT COALESCE(SUM(paid_amount),0) c FROM fees WHERE status='Paid'");
     const [pending] = await q("SELECT COUNT(*) c FROM complaints WHERE status='Pending'");
     const [leaves] = await q("SELECT COUNT(*) c FROM leaves WHERE status='Pending'");
-    const [present] = await q("SELECT COUNT(*) c FROM attendance WHERE date=CURDATE() AND status='Present'");
-    const [absent] = await q("SELECT COUNT(*) c FROM attendance WHERE date=CURDATE() AND status='Absent'");
+    const [present] = await q("SELECT COUNT(*) c FROM attendance WHERE date=CURRENT_DATE AND status='Present'");
+    const [absent] = await q("SELECT COUNT(*) c FROM attendance WHERE date=CURRENT_DATE AND status='Absent'");
     const [escalated] = await q("SELECT COUNT(*) c FROM complaints WHERE status IN ('Escalated to Admin','Under Admin Review')");
     const [maint] = await q("SELECT COUNT(*) c FROM maintenance_requests WHERE status NOT IN ('Resolved','Closed')");
     const [pendingFees] = await q("SELECT COALESCE(SUM(due_amount),0) c FROM fees WHERE status!='Paid'");
@@ -281,7 +286,8 @@ router.put('/complaints/:id/status', async (req, res) => {
     if (status === 'Resolved' || status === 'Resolved by Admin') { updates.resolved_by = req.user.id; updates.resolved_at = new Date(); updates.resolution_date = new Date(); }
     if (remark) updates.admin_response = remark;
     if (status === 'Resolved by Admin') updates.resolution_notes = remark;
-    await q('UPDATE complaints SET ? WHERE id=?', [updates, req.params.id]);
+    const set = buildSet(updates);
+    await q(`UPDATE complaints SET ${set.clause} WHERE id=?`, [...set.params, req.params.id]);
     await q('INSERT INTO complaint_logs (complaint_id, action, performed_by, role, remarks) VALUES (?,?,?,?,?)', [req.params.id, status, req.user.id, 'admin', remark]);
     res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -322,7 +328,7 @@ router.post('/attendance/mark', async (req, res) => {
     const conn = await pool.getConnection();
     try {
       for (const r of records) {
-        await conn.query("INSERT INTO attendance (student_id,date,status,remarks,taken_by,taken_role,is_locked,time) VALUES (?,?,?,?,?,'admin',0,NOW()) ON DUPLICATE KEY UPDATE status=VALUES(status),remarks=VALUES(remarks),taken_by=VALUES(taken_by),taken_role='admin',time=NOW()",
+        await conn.query("INSERT INTO attendance (student_id,date,status,remarks,taken_by,taken_role,is_locked,time) VALUES (?,?,?,?,?,'admin',0,NOW()) ON CONFLICT (student_id, date) DO UPDATE SET status=EXCLUDED.status, remarks=EXCLUDED.remarks, taken_by=EXCLUDED.taken_by, taken_role='admin', time=NOW()",
           [r.student_id, date, r.status, r.remarks || null, req.user.id]);
       }
       res.json({ message: 'Attendance saved' });
@@ -368,7 +374,7 @@ router.delete('/notices/:id', async (req, res) => {
 
 // Mess Menu
 router.get('/mess-menu', async (req, res) => {
-  try { const data = await q("SELECT * FROM mess_menu ORDER BY FIELD(day,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), FIELD(meal_type,'Breakfast','Lunch','Evening Snacks','Dinner')");
+  try { const data = await q("SELECT * FROM mess_menu ORDER BY COALESCE(array_position(ARRAY['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'], day), 99), COALESCE(array_position(ARRAY['Breakfast','Lunch','Evening Snacks','Dinner'], meal_type), 99)");
     res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -437,7 +443,8 @@ router.put('/emergency/:id/status', async (req, res) => {
     const updates = { status };
     if (assigned_to) updates.assigned_to = assigned_to;
     if (resolution) { updates.resolution = resolution; updates.resolved_at = new Date(); }
-    await q('UPDATE emergency_reports SET ? WHERE id=?', [updates, req.params.id]);
+    const set = buildSet(updates);
+    await q(`UPDATE emergency_reports SET ${set.clause} WHERE id=?`, [...set.params, req.params.id]);
     res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -464,10 +471,10 @@ router.put('/visitors/checkout/:id', async (req, res) => {
 
 // Wardens
 router.get('/wardens', async (req, res) => {
-  try { fs.appendFileSync('C:\\Users\\HP\\AppData\\Local\\Temp\\admin_err.log', `${new Date().toISOString()} wardens start\n`); const { page = 1, limit = 20 } = req.query; const offset = (page - 1) * limit;
+  try { const { page = 1, limit = 20 } = req.query; const offset = (page - 1) * limit;
     const [count] = await q('SELECT COUNT(*) c FROM wardens');
     const data = await q('SELECT w.*, u.username FROM wardens w JOIN users u ON u.id=w.user_id ORDER BY w.id DESC LIMIT ? OFFSET ?', [+limit, +offset]);
-    res.json({ wardens: data, total: count.c, page: +page }); } catch (e) { fs.appendFileSync('C:\\Users\\HP\\AppData\\Local\\Temp\\admin_err.log', `${new Date().toISOString()} wardens catch: ${e.stack || e.message}\n`); res.status(500).json({ error: e.message }); }
+    res.json({ wardens: data, total: count.c, page: +page }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/wardens', async (req, res) => {
@@ -584,7 +591,7 @@ router.put('/room-changes/:id', async (req, res) => {
       if (!rcr) return res.status(404).json({ error: 'Request not found' });
       const conn = await pool.getConnection();
       try { await conn.beginTransaction();
-        await conn.query('UPDATE room_allocations SET room_id=?, allocation_date=CURDATE() WHERE student_id=? AND status=?', [rcr.requested_room_id, rcr.student_id, 'Active']);
+        await conn.query('UPDATE room_allocations SET room_id=?, allocation_date=CURRENT_DATE WHERE student_id=? AND status=?', [rcr.requested_room_id, rcr.student_id, 'Active']);
         await conn.query('UPDATE rooms SET occupancy=occupancy-1 WHERE id=?', [rcr.current_room_id]);
         await conn.query('UPDATE rooms SET occupancy=occupancy+1 WHERE id=?', [rcr.requested_room_id]);
         await conn.query("UPDATE rooms SET status='Available' WHERE id=? AND capacity>occupancy", [rcr.current_room_id]);
@@ -606,7 +613,7 @@ router.get('/maintenance', async (req, res) => {
     let where = '', params = [];
     if (status) { where = 'WHERE mr.status=?'; params.push(status); }
     const [count] = await q(`SELECT COUNT(*) c FROM maintenance_requests mr ${where}`, params);
-    const data = await q(`SELECT mr.*, s.name AS student_name, s.roll_no, r.room_no, a.username AS assigned_name FROM maintenance_requests mr LEFT JOIN students s ON s.id=mr.student_id LEFT JOIN rooms r ON r.id=mr.room_id LEFT JOIN users a ON a.id=mr.assigned_to ${where} ORDER BY FIELD(mr.priority,'Emergency','High','Medium','Low'), mr.created_at DESC LIMIT ? OFFSET ?`, [...params, +limit, +offset]);
+    const data = await q(`SELECT mr.*, s.name AS student_name, s.roll_no, r.room_no, a.username AS assigned_name FROM maintenance_requests mr LEFT JOIN students s ON s.id=mr.student_id LEFT JOIN rooms r ON r.id=mr.room_id LEFT JOIN users a ON a.id=mr.assigned_to ${where} ORDER BY COALESCE(array_position(ARRAY['Emergency','High','Medium','Low'], mr.priority), 99), mr.created_at DESC LIMIT ? OFFSET ?`, [...params, +limit, +offset]);
     const assignable = await q("SELECT id, username, role FROM users WHERE role IN ('admin','warden') AND status=1 ORDER BY username");
     res.json({ requests: data, total: count.c, assignable, page: +page }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -616,7 +623,8 @@ router.put('/maintenance/:id/status', async (req, res) => {
     const updates = { status };
     if (assigned_to) { updates.assigned_to = assigned_to; updates.assigned_date = new Date(); }
     if (completion_remarks) { updates.completed_date = new Date(); updates.completion_remarks = completion_remarks; }
-    await q('UPDATE maintenance_requests SET ? WHERE id=?', [updates, req.params.id]); res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
+    const set = buildSet(updates);
+    await q(`UPDATE maintenance_requests SET ${set.clause} WHERE id=?`, [...set.params, req.params.id]); res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Maintenance History
@@ -713,9 +721,43 @@ router.get('/backups', async (req, res) => {
 router.post('/backups/create', async (req, res) => {
   try {
     const fs = require('fs'); const path = require('path');
-    const [tables] = await q('SHOW TABLES');
+    const tables = await q("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename NOT LIKE 'pg_%' ORDER BY tablename");
+    const typeMap = {
+      'character varying': c => `varchar(${c.character_maximum_length})`,
+      'character': c => `char(${c.character_maximum_length})`,
+      'text': () => 'text',
+      'integer': () => 'int',
+      'bigint': () => 'bigint',
+      'smallint': () => 'smallint',
+      'numeric': c => `numeric(${c.numeric_precision},${c.numeric_scale})`,
+      'date': () => 'date',
+      'timestamp with time zone': () => 'timestamptz',
+      'timestamp without time zone': () => 'timestamp',
+      'boolean': () => 'boolean',
+      'jsonb': () => 'jsonb',
+      'json': () => 'json',
+      'double precision': () => 'double precision',
+      'real': () => 'real',
+    };
     let sql = `-- Backup created ${new Date().toISOString()}\n\n`;
-    for (const t of tables) { const tn = Object.values(t)[0]; const [create] = await q(`SHOW CREATE TABLE \`${tn}\``); sql += `${create[0]['Create Table']};\n\n`; const [rows] = await q(`SELECT * FROM \`${tn}\``); for (const row of rows) { const cols = Object.keys(row).map(c => `\`${c}\``).join(','); const vals = Object.values(row).map(v => v === null ? 'NULL' : `'${String(v).replace(/'/g, "\\'")}'`).join(','); sql += `INSERT INTO \`${tn}\` (${cols}) VALUES (${vals});\n`; } sql += '\n'; }
+    for (const t of tables) {
+      const tn = t.tablename;
+      const cols = await q('SELECT column_name, data_type, is_nullable, column_default, character_maximum_length, numeric_precision, numeric_scale FROM information_schema.columns WHERE table_name=? ORDER BY ordinal_position', [tn]);
+      const pk = await q(`SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey) WHERE i.indrelid='${tn}'::regclass AND i.indisprimary`);
+      const defs = cols.map(c => {
+        const type = (typeMap[c.data_type] || (() => c.data_type))(c);
+        return `  ${c.column_name} ${type}${c.is_nullable === 'NO' ? ' NOT NULL' : ''}${c.column_default ? ` DEFAULT ${c.column_default}` : ''}`;
+      });
+      if (pk.length) defs.push(`  PRIMARY KEY (${pk.map(p => p.attname).join(', ')})`);
+      sql += `CREATE TABLE IF NOT EXISTS ${tn} (\n${defs.join(',\n')}\n);\n\n`;
+      const rows = await q(`SELECT * FROM ${tn}`);
+      for (const row of rows) {
+        const cols2 = Object.keys(row).map(c => `"${c}"`).join(',');
+        const vals = Object.values(row).map(v => v === null ? 'NULL' : v instanceof Date ? `'${v.toISOString()}'` : typeof v === 'object' ? `'${JSON.stringify(v).replace(/'/g, "''")}'` : `'${String(v).replace(/'/g, "''")}'`).join(',');
+        sql += `INSERT INTO ${tn} (${cols2}) VALUES (${vals});\n`;
+      }
+      sql += '\n';
+    }
     const filename = `backup_${Date.now()}.sql`; const filepath = path.join(__dirname, '..', '..', 'backups', filename);
     if (!fs.existsSync(path.dirname(filepath))) fs.mkdirSync(path.dirname(filepath), { recursive: true });
     fs.writeFileSync(filepath, sql);
@@ -733,7 +775,7 @@ router.get('/analytics', async (req, res) => {
     // Attendance trend 30 days
     const attTrend = []; for (let i = 29; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); const ds = d.toISOString().split('T')[0]; const [p] = await q("SELECT COUNT(*) c FROM attendance WHERE date=? AND status='Present'", [ds]); const [a] = await q("SELECT COUNT(*) c FROM attendance WHERE date=? AND status='Absent'", [ds]); attTrend.push({ date: ds, present: p.c, absent: a.c }); }
     // Fee collection 12 months
-    const feeTrend = []; for (let i = 11; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; const [f] = await q("SELECT COALESCE(SUM(paid_amount),0) c FROM fees WHERE DATE_FORMAT(payment_date,'%Y-%m')=? AND status='Paid'", [ym]); feeTrend.push({ month: ym, amount: f.c }); }
+    const feeTrend = []; for (let i = 11; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; const [f] = await q("SELECT COALESCE(SUM(paid_amount),0) c FROM fees WHERE TO_CHAR(payment_date,'YYYY-MM')=? AND status='Paid'", [ym]); feeTrend.push({ month: ym, amount: f.c }); }
     const roomTypes = await q('SELECT room_type, COUNT(*) c FROM rooms GROUP BY room_type ORDER BY c DESC');
     res.json({ stats: { activeStudents: activeStudents.c, totalCapacity: totalCapacity.c, totalOccupancy: totalOccupancy.c, totalFees: totalFees.c }, attTrend, feeTrend, roomTypes }); } catch (e) { res.status(500).json({ error: e.message }); }
 });

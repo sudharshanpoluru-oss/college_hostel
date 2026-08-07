@@ -6,6 +6,12 @@ const router = express.Router();
 router.use(authenticate, authorize('warden'));
 const q = async (sql, params = []) => { const [r] = await pool.query(sql, params); return r; };
 
+// mysql2 allowed `SET ?` with a JS object; Postgres needs an explicit column list.
+const buildSet = (obj) => {
+  const keys = Object.keys(obj);
+  return { clause: keys.map(k => `${k}=?`).join(', '), params: keys.map(k => obj[k]) };
+};
+
 // Dashboard
 router.get('/dashboard', async (req, res) => {
   try {
@@ -17,7 +23,7 @@ router.get('/dashboard', async (req, res) => {
     const [students] = await q(`SELECT COUNT(*) c FROM students s WHERE s.status='Active' ${hostelFilter}`, params);
     const [complaints] = await q(`SELECT COUNT(*) c FROM complaints c JOIN students s ON s.id=c.student_id WHERE c.status='Pending' ${hostelFilter}`, params);
     const [leaves] = await q(`SELECT COUNT(*) c FROM leaves l JOIN students s ON s.id=l.student_id WHERE l.status='Pending' ${hostelFilter}`, params);
-    const [present] = await q(`SELECT COUNT(*) c FROM attendance a JOIN students s ON s.id=a.student_id WHERE a.date=CURDATE() AND a.status='Present' ${hostelFilter}`, params);
+    const [present] = await q(`SELECT COUNT(*) c FROM attendance a JOIN students s ON s.id=a.student_id WHERE a.date=CURRENT_DATE AND a.status='Present' ${hostelFilter}`, params);
     res.json({ warden, stats: { students: students.c, pendingComplaints: complaints.c, pendingLeaves: leaves.c, presentToday: present.c } });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -45,7 +51,7 @@ router.get('/attendance/students', async (req, res) => {
 router.post('/attendance/mark', async (req, res) => {
   try { const { date, records } = req.body;
     if (!records || !Array.isArray(records)) return res.status(400).json({ error: 'records array is required' });
-    for (const r of records) { await q("INSERT INTO attendance (student_id,date,status,remarks,taken_by,taken_role,is_locked,time) VALUES (?,?,?,?,?,'warden',0,NOW()) ON DUPLICATE KEY UPDATE status=VALUES(status),remarks=VALUES(remarks),taken_by=VALUES(taken_by),taken_role='warden',time=NOW()", [r.student_id, date, r.status, r.remarks || null, req.user.id]); }
+    for (const r of records) { await q("INSERT INTO attendance (student_id,date,status,remarks,taken_by,taken_role,is_locked,time) VALUES (?,?,?,?,?,'warden',0,NOW()) ON CONFLICT (student_id, date) DO UPDATE SET status=EXCLUDED.status, remarks=EXCLUDED.remarks, taken_by=EXCLUDED.taken_by, taken_role='warden', time=NOW()", [r.student_id, date, r.status, r.remarks || null, req.user.id]); }
     res.json({ message: 'Attendance saved' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -94,7 +100,7 @@ router.get('/maintenance', async (req, res) => {
   try { const wardenRows = await q('SELECT hostel_type FROM wardens WHERE user_id=?', [req.user.id]);
     const hostelType = wardenRows.length ? wardenRows[0].hostel_type : null;
     const filter = hostelType ? 'AND s.hostel_type=?' : ''; const p = hostelType ? [hostelType] : [];
-    const data = await q(`SELECT mr.*, s.name AS student_name, s.roll_no, r.room_no FROM maintenance_requests mr LEFT JOIN students s ON s.id=mr.student_id LEFT JOIN rooms r ON r.id=mr.room_id WHERE 1=1 ${filter} ORDER BY FIELD(mr.priority,'Emergency','High','Medium','Low'), mr.created_at DESC`, p);
+    const data = await q(`SELECT mr.*, s.name AS student_name, s.roll_no, r.room_no FROM maintenance_requests mr LEFT JOIN students s ON s.id=mr.student_id LEFT JOIN rooms r ON r.id=mr.room_id WHERE 1=1 ${filter} ORDER BY COALESCE(array_position(ARRAY['Emergency','High','Medium','Low'], mr.priority), 99), mr.created_at DESC`, p);
     res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -103,7 +109,8 @@ router.put('/maintenance/:id/status', async (req, res) => {
     const updates = { status };
     if (assigned_to) { updates.assigned_to = assigned_to; updates.assigned_date = new Date(); }
     if (completion_remarks) { updates.completed_date = new Date(); updates.completion_remarks = completion_remarks; }
-    await q('UPDATE maintenance_requests SET ? WHERE id=?', [updates, req.params.id]); res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
+    const set = buildSet(updates);
+    await q(`UPDATE maintenance_requests SET ${set.clause} WHERE id=?`, [...set.params, req.params.id]); res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Visitors
@@ -133,12 +140,12 @@ router.put('/visitors/:id/checkout', async (req, res) => {
 
 // Emergency
 router.get('/emergency', async (req, res) => {
-  try { const data = await q('SELECT e.*, s.name AS student_name, s.roll_no, r.room_no FROM emergency_logs e LEFT JOIN students s ON s.id=e.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status="Active" LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY FIELD(e.severity,"Critical","High","Medium","Low"), e.reported_at DESC LIMIT 50'); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const data = await q("SELECT e.*, s.name AS student_name, s.roll_no, r.room_no FROM emergency_logs e LEFT JOIN students s ON s.id=e.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY COALESCE(array_position(ARRAY['Critical','High','Medium','Low'], e.severity), 99), e.reported_at DESC LIMIT 50"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/emergency/:id', async (req, res) => {
   try { const { status, response_notes } = req.body;
-    await q('UPDATE emergency_logs SET status=?, response_notes=CONCAT(IFNULL(response_notes,""),"\n[",NOW(),"] ",?), responded_by=?, responded_at=NOW() WHERE id=?', [status, response_notes, req.user.id, req.params.id]);
+    await q("UPDATE emergency_logs SET status=?, response_notes=CONCAT(COALESCE(response_notes,''), CHR(10)||'['||NOW()||'] '||COALESCE(?,'')), responded_by=?, responded_at=NOW() WHERE id=?", [status, response_notes, req.user.id, req.params.id]);
     res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -149,7 +156,7 @@ router.get('/notices', async (req, res) => {
 
 router.post('/notices', async (req, res) => {
   try { const { title, content, target_role, priority } = req.body;
-    await q('INSERT INTO notices (title,content,target_role,priority,created_by,created_at,expires_at) VALUES (?,?,?,?,?,NOW(),DATE_ADD(NOW(),INTERVAL 30 DAY))', [title, content, target_role || 'all', priority || 'Normal', req.user.id]);
+    await q('INSERT INTO notices (title,content,target_role,priority,created_by,created_at,expires_at) VALUES (?,?,?,?,?,NOW(),NOW() + INTERVAL \'30 days\')', [title, content, target_role || 'all', priority || 'Normal', req.user.id]);
     res.status(201).json({ message: 'Notice added' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -168,7 +175,7 @@ router.get('/daily-report', async (req, res) => {
     const [absent] = await q(`SELECT COUNT(*) c FROM attendance a JOIN students s ON s.id=a.student_id WHERE a.date=? AND a.status='Absent' ${filter}`, [d, ...p]);
     const pendingLeaves = await q(`SELECT l.*, s.name, s.roll_no FROM leaves l JOIN students s ON s.id=l.student_id WHERE l.status='Pending' ${filter}`, p);
     const pendingComplaints = await q(`SELECT c.*, s.name, s.roll_no FROM complaints c JOIN students s ON s.id=c.student_id WHERE c.status IN ('Pending','In Progress') ${filter}`, p);
-    const visitors = await q(`SELECT v.*, s.name, s.roll_no FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id WHERE DATE(v.check_in)=? ORDER BY v.check_in`, [d]);
+    const visitors = await q(`SELECT v.*, s.name, s.roll_no FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id WHERE CAST(v.check_in AS DATE)=? ORDER BY v.check_in`, [d]);
     res.json({ date: d, totalStudents: totalStudents.c, present: present.c, absent: absent.c, pendingLeaves, pendingComplaints, visitors });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -186,7 +193,7 @@ router.post('/room-inspection', async (req, res) => {
 
 // Medical
 router.get('/medical', async (req, res) => {
-  try { const data = await q('SELECT mr.*, s.name AS student_name, s.roll_no, r.room_no FROM medical_records mr LEFT JOIN students s ON s.id=mr.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status="Active" LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY mr.created_at DESC'); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const data = await q("SELECT mr.*, s.name AS student_name, s.roll_no, r.room_no FROM medical_records mr LEFT JOIN students s ON s.id=mr.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY mr.created_at DESC"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/medical', async (req, res) => {
@@ -197,7 +204,7 @@ router.post('/medical', async (req, res) => {
 
 // Discipline
 router.get('/discipline', async (req, res) => {
-  try { const data = await q('SELECT dr.*, s.name AS student_name, s.roll_no, r.room_no FROM discipline_records dr LEFT JOIN students s ON s.id=dr.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status="Active" LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY dr.created_at DESC'); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const data = await q("SELECT dr.*, s.name AS student_name, s.roll_no, r.room_no FROM discipline_records dr LEFT JOIN students s ON s.id=dr.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY dr.created_at DESC"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/discipline', async (req, res) => {

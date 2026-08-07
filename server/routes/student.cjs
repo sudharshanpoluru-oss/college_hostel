@@ -19,8 +19,8 @@ router.get('/dashboard', async (req, res) => {
     if (!student) return res.status(404).json({ error: 'Student not found' });
     const [alloc] = await q('SELECT ra.*, r.room_no, r.room_type, r.fee_per_month FROM room_allocations ra JOIN rooms r ON r.id=ra.room_id WHERE ra.student_id=? AND ra.status=?', [student.id, 'Active']);
     const [fee] = await q('SELECT COALESCE(SUM(paid_amount),0) AS paid, COALESCE(SUM(total_fee),0) AS total FROM fees WHERE student_id=?', [student.id]);
-    const [att] = await q("SELECT COUNT(*) c FROM attendance WHERE student_id=? AND date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY) AND status='Present'", [student.id]);
-    const [totalAtt] = await q('SELECT COUNT(*) c FROM attendance WHERE student_id=? AND date >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)', [student.id]);
+    const [att] = await q("SELECT COUNT(*) c FROM attendance WHERE student_id=? AND date >= CURRENT_DATE - 30 AND status='Present'", [student.id]);
+    const [totalAtt] = await q('SELECT COUNT(*) c FROM attendance WHERE student_id=? AND date >= CURRENT_DATE - 30', [student.id]);
     const [pendingComplaints] = await q("SELECT COUNT(*) c FROM complaints WHERE student_id=? AND status NOT IN ('Resolved','Closed','Rejected')", [student.id]);
     const [pendingLeaves] = await q("SELECT COUNT(*) c FROM leaves WHERE student_id=? AND status='Pending'", [student.id]);
     const [unreadNotifs] = await q('SELECT COUNT(*) c FROM notifications WHERE user_id=? AND is_read=0', [req.user.id]);
@@ -47,7 +47,7 @@ router.get('/attendance', async (req, res) => {
   try { const student = await getStudent(req.user.id);
     const { month, year } = req.query;
     let where = 'WHERE student_id=?', params = [student.id];
-    if (month && year) { where += ' AND MONTH(date)=? AND YEAR(date)=?'; params.push(month, year); }
+    if (month && year) { where += ' AND EXTRACT(MONTH FROM date)=? AND EXTRACT(YEAR FROM date)=?'; params.push(month, year); }
     const data = await q(`SELECT * FROM attendance ${where} ORDER BY date DESC`, params);
     res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -136,18 +136,18 @@ router.post('/room-change', async (req, res) => {
 
 // Mess
 router.get('/mess', async (req, res) => {
-  try { const data = await q("SELECT * FROM mess_menu WHERE status=1 ORDER BY FIELD(day,'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'), FIELD(meal_type,'Breakfast','Lunch','Evening Snacks','Dinner')");
+  try { const data = await q("SELECT * FROM mess_menu WHERE status=1 ORDER BY COALESCE(array_position(ARRAY['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'], day), 99), COALESCE(array_position(ARRAY['Breakfast','Lunch','Evening Snacks','Dinner'], meal_type), 99)");
     res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Notices
 router.get('/notices', async (req, res) => {
-  try { const data = await q("SELECT * FROM notices WHERE status=1 AND (expiry_date IS NULL OR expiry_date >= CURDATE()) ORDER BY publish_date DESC"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const data = await q("SELECT * FROM notices WHERE status=1 AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE) ORDER BY publish_date DESC"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Events
 router.get('/events', async (req, res) => {
-  try { const data = await q("SELECT * FROM hostel_events WHERE status=1 AND event_date >= CURDATE() ORDER BY event_date ASC"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const data = await q("SELECT * FROM hostel_events WHERE status=1 AND event_date >= CURRENT_DATE ORDER BY event_date ASC"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Notifications
