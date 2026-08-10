@@ -54,7 +54,11 @@ router.get('/students/:id', async (req, res) => {
   try {
     const rows = await q(`SELECT s.*, r.room_no, r.room_type, r.id AS room_id, ra.bed_no, ra.allocation_date AS room_allocation_date, ra.id AS allocation_id FROM students s LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id WHERE s.id=?`, [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
-    const availableRooms = await q("SELECT * FROM rooms WHERE status!='Full' ORDER BY room_no");
+    const gender = rows[0].gender;
+    let roomFilter = "status!='Full'";
+    if (gender === 'Male') roomFilter += " AND hostel_type='boys'";
+    else if (gender === 'Female') roomFilter += " AND hostel_type='girls'";
+    const availableRooms = await q(`SELECT * FROM rooms WHERE ${roomFilter} ORDER BY room_no`, []);
     res.json({ student: rows[0], availableRooms });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -380,13 +384,13 @@ router.get('/mess-menu', async (req, res) => {
 
 router.post('/mess-menu', async (req, res) => {
   try { const { day, meal_type, menu_items, date } = req.body;
-    await q('INSERT INTO mess_menu (day,meal_type,menu_items,date,status) VALUES (?,?,?,?,1)', [day, meal_type, menu_items, date]);
+    await q('INSERT INTO mess_menu (day,meal_type,menu_items,date,status) VALUES (?,?,?,?,1)', [day, meal_type, menu_items, date || null]);
     res.status(201).json({ message: 'Added' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/mess-menu/:id', async (req, res) => {
   try { const { day, meal_type, menu_items, date, status } = req.body;
-    await q('UPDATE mess_menu SET day=?,meal_type=?,menu_items=?,date=?,status=? WHERE id=?', [day, meal_type, menu_items, date, status, req.params.id]);
+    await q('UPDATE mess_menu SET day=?,meal_type=?,menu_items=?,date=?,status=? WHERE id=?', [day, meal_type, menu_items, date || null, status, req.params.id]);
     res.json({ message: 'Updated' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -480,6 +484,8 @@ router.get('/wardens', async (req, res) => {
 router.post('/wardens', async (req, res) => {
   const { name, phone, email, shift, hostel_type, username, password } = req.body;
   if (!username || !name) return res.status(400).json({ error: 'Username and name are required' });
+  const [existing] = await q('SELECT id FROM users WHERE username = ? OR email = ?', [username, email || '']);
+  if (existing.length) return res.status(400).json({ error: 'Username or email already exists' });
   const conn = await pool.getConnection();
   try { await conn.beginTransaction();
     const hash = require('bcryptjs').hashSync(password || 'warden123', 10);
@@ -758,10 +764,14 @@ router.post('/backups/create', async (req, res) => {
       }
       sql += '\n';
     }
-    const filename = `backup_${Date.now()}.sql`; const filepath = path.join(__dirname, '..', '..', 'backups', filename);
-    if (!fs.existsSync(path.dirname(filepath))) fs.mkdirSync(path.dirname(filepath), { recursive: true });
-    fs.writeFileSync(filepath, sql);
-    await q('INSERT INTO backup_history (filename,filepath,filesize,type,created_by) VALUES (?,?,?,?,?)', [filename, filepath, Buffer.byteLength(sql), 'manual', req.user.id]);
+    const filename = `backup_${Date.now()}.sql`;
+    let filepath = ''; const filesize = Buffer.byteLength(sql);
+    try {
+      const full = path.join(__dirname, '..', '..', 'backups', filename);
+      if (!fs.existsSync(path.dirname(full))) fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, sql); filepath = full;
+    } catch (e) { /* read-only serverless fs: still record history */ }
+    await q('INSERT INTO backup_history (filename,filepath,filesize,type,created_by) VALUES (?,?,?,?,?)', [filename, filepath, filesize, 'manual', req.user.id]);
     res.json({ message: 'Backup created', filename }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

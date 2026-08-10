@@ -6,6 +6,17 @@ const router = express.Router();
 router.use(authenticate, authorize('warden'));
 const q = async (sql, params = []) => { const [r] = await pool.query(sql, params); return r; };
 
+const getHostelType = async (req) => {
+  const rows = await q('SELECT hostel_type FROM wardens WHERE user_id=?', [req.user.id]);
+  return rows.length ? rows[0].hostel_type : null;
+};
+
+const isSameHostel = async (studentId, hostelType) => {
+  if (!hostelType) return true;
+  const rows = await q('SELECT id FROM students WHERE id=? AND hostel_type=?', [studentId, hostelType]);
+  return rows.length > 0;
+};
+
 // mysql2 allowed `SET ?` with a JS object; Postgres needs an explicit column list.
 const buildSet = (obj) => {
   const keys = Object.keys(obj);
@@ -116,16 +127,21 @@ router.put('/maintenance/:id/status', async (req, res) => {
 // Visitors
 router.get('/visitors', async (req, res) => {
   try { const { search, page = 1, limit = 20 } = req.query; const offset = (page - 1) * limit;
+    const hostelType = await getHostelType(req);
+    const filter = hostelType ? 'AND (v.student_id IS NULL OR s.hostel_type=?)' : '';
+    const filterParams = hostelType ? [hostelType] : [];
     let where = '', params = [];
     if (search) { where = 'WHERE v.visitor_name LIKE ? OR v.contact LIKE ?'; params.push(`%${search}%`, `%${search}%`); }
-    const [count] = await q(`SELECT COUNT(*) c FROM visitor_logs v ${where}`, params);
-    const data = await q(`SELECT v.*, s.name AS student_name, s.roll_no FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id ${where} ORDER BY v.check_in DESC LIMIT ? OFFSET ?`, [...params, +limit, +offset]);
-    const students = await q("SELECT id,name,roll_no FROM students WHERE status='Active' ORDER BY name");
+    const [count] = await q(`SELECT COUNT(*) c FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id ${where} ${filter}`, [...params, ...filterParams]);
+    const data = await q(`SELECT v.*, s.name AS student_name, s.roll_no FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id ${where} ${filter} ORDER BY v.check_in DESC LIMIT ? OFFSET ?`, [...params, ...filterParams, +limit, +offset]);
+    const students = await q(hostelType ? "SELECT id,name,roll_no FROM students WHERE status='Active' AND hostel_type=? ORDER BY name" : "SELECT id,name,roll_no FROM students WHERE status='Active' ORDER BY name", hostelType ? [hostelType] : []);
     res.json({ visitors: data, total: count.c, students, page: +page }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/visitors', async (req, res) => {
   try { const { visitor_name, contact, purpose, student_id, remarks } = req.body;
+    const hostelType = await getHostelType(req);
+    if (student_id && !(await isSameHostel(student_id, hostelType))) return res.status(403).json({ error: 'Student belongs to another hostel' });
     await q('INSERT INTO visitor_logs (visitor_name,contact,purpose,student_id,check_in,remarks,created_by) VALUES (?,?,?,?,NOW(),?,?)', [visitor_name, contact, purpose, student_id || null, remarks, req.user.id]);
     res.status(201).json({ message: 'Visitor logged' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -140,7 +156,10 @@ router.put('/visitors/:id/checkout', async (req, res) => {
 
 // Emergency
 router.get('/emergency', async (req, res) => {
-  try { const data = await q("SELECT e.*, s.name AS student_name, s.roll_no, r.room_no FROM emergency_logs e LEFT JOIN students s ON s.id=e.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY COALESCE(array_position(ARRAY['Critical','High','Medium','Low'], e.severity), 99), e.reported_at DESC LIMIT 50"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const hostelType = await getHostelType(req);
+    const filter = hostelType ? 'AND (e.student_id IS NULL OR s.hostel_type=?)' : '';
+    const params = hostelType ? [hostelType] : [];
+    const data = await q(`SELECT e.*, s.name AS student_name, s.roll_no, r.room_no FROM emergency_logs e LEFT JOIN students s ON s.id=e.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id WHERE 1=1 ${filter} ORDER BY COALESCE(array_position(ARRAY['Critical','High','Medium','Low'], e.severity), 99), e.reported_at DESC LIMIT 50`, params); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.put('/emergency/:id', async (req, res) => {
@@ -175,14 +194,17 @@ router.get('/daily-report', async (req, res) => {
     const [absent] = await q(`SELECT COUNT(*) c FROM attendance a JOIN students s ON s.id=a.student_id WHERE a.date=? AND a.status='Absent' ${filter}`, [d, ...p]);
     const pendingLeaves = await q(`SELECT l.*, s.name, s.roll_no FROM leaves l JOIN students s ON s.id=l.student_id WHERE l.status='Pending' ${filter}`, p);
     const pendingComplaints = await q(`SELECT c.*, s.name, s.roll_no FROM complaints c JOIN students s ON s.id=c.student_id WHERE c.status IN ('Pending','In Progress') ${filter}`, p);
-    const visitors = await q(`SELECT v.*, s.name, s.roll_no FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id WHERE CAST(v.check_in AS DATE)=? ORDER BY v.check_in`, [d]);
+    const visitors = await q(`SELECT v.*, s.name, s.roll_no FROM visitor_logs v LEFT JOIN students s ON s.id=v.student_id WHERE CAST(v.check_in AS DATE)=? ${filter} ORDER BY v.check_in`, [d, ...p]);
     res.json({ date: d, totalStudents: totalStudents.c, present: present.c, absent: absent.c, pendingLeaves, pendingComplaints, visitors });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Room Inspection
 router.get('/room-inspection', async (req, res) => {
-  try { const data = await q('SELECT r.*, ri.cleanliness_rating, ri.maintenance_notes, ri.action_taken, ri.inspection_date FROM rooms r LEFT JOIN room_inspections ri ON ri.room_id=r.id ORDER BY r.floor, r.room_no'); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const hostelType = await getHostelType(req);
+    const filter = hostelType ? 'WHERE r.hostel_type=?' : '';
+    const params = hostelType ? [hostelType] : [];
+    const data = await q(`SELECT r.*, ri.cleanliness_rating, ri.maintenance_notes, ri.action_taken, ri.inspection_date FROM rooms r LEFT JOIN room_inspections ri ON ri.room_id=r.id ${filter} ORDER BY r.floor, r.room_no`, params); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/room-inspection', async (req, res) => {
@@ -193,22 +215,32 @@ router.post('/room-inspection', async (req, res) => {
 
 // Medical
 router.get('/medical', async (req, res) => {
-  try { const data = await q("SELECT mr.*, s.name AS student_name, s.roll_no, r.room_no FROM medical_records mr LEFT JOIN students s ON s.id=mr.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY mr.created_at DESC"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const hostelType = await getHostelType(req);
+    const filter = hostelType ? 'AND (mr.student_id IS NULL OR s.hostel_type=?)' : '';
+    const params = hostelType ? [hostelType] : [];
+    const data = await q(`SELECT mr.*, s.name AS student_name, s.roll_no, r.room_no FROM medical_records mr LEFT JOIN students s ON s.id=mr.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id WHERE 1=1 ${filter} ORDER BY mr.created_at DESC`, params); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/medical', async (req, res) => {
   try { const { student_id, symptoms, diagnosis, treatment, medication, follow_up_date, notes } = req.body;
+    const hostelType = await getHostelType(req);
+    if (student_id && !(await isSameHostel(student_id, hostelType))) return res.status(403).json({ error: 'Student belongs to another hostel' });
     await q('INSERT INTO medical_records (student_id,reported_by,symptoms,diagnosis,treatment,medication,follow_up_date,notes) VALUES (?,?,?,?,?,?,?,?)', [student_id, req.user.id, symptoms, diagnosis, treatment, medication, follow_up_date, notes]);
     res.status(201).json({ message: 'Record added' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // Discipline
 router.get('/discipline', async (req, res) => {
-  try { const data = await q("SELECT dr.*, s.name AS student_name, s.roll_no, r.room_no FROM discipline_records dr LEFT JOIN students s ON s.id=dr.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id ORDER BY dr.created_at DESC"); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { const hostelType = await getHostelType(req);
+    const filter = hostelType ? 'AND (dr.student_id IS NULL OR s.hostel_type=?)' : '';
+    const params = hostelType ? [hostelType] : [];
+    const data = await q(`SELECT dr.*, s.name AS student_name, s.roll_no, r.room_no FROM discipline_records dr LEFT JOIN students s ON s.id=dr.student_id LEFT JOIN room_allocations ra ON ra.student_id=s.id AND ra.status='Active' LEFT JOIN rooms r ON r.id=ra.room_id WHERE 1=1 ${filter} ORDER BY dr.created_at DESC`, params); res.json(data); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/discipline', async (req, res) => {
   try { const { student_id, incident_type, description, severity, action_taken, remarks } = req.body;
+    const hostelType = await getHostelType(req);
+    if (student_id && !(await isSameHostel(student_id, hostelType))) return res.status(403).json({ error: 'Student belongs to another hostel' });
     await q('INSERT INTO discipline_records (student_id,reported_by,incident_type,description,severity,action_taken,remarks) VALUES (?,?,?,?,?,?,?)', [student_id, req.user.id, incident_type, description, severity, action_taken, remarks]);
     res.status(201).json({ message: 'Record added' }); } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -25,6 +25,8 @@ router.post('/login', async (req, res) => {
 router.post('/register', async (req, res) => {
   const { username, email, password, name, roll_no, phone, gender, course, year, address } = req.body;
   if (!username || !email || !password || !name || !roll_no) return res.status(400).json({ error: 'Required fields missing' });
+  const [existing] = await pool.query('SELECT id FROM users WHERE username = ? OR email = ?', [username, email]);
+  if (existing.length) return res.status(400).json({ error: 'Username or email already registered' });
   const hash = await bcrypt.hash(password, 10);
   const conn = await pool.getConnection();
   try { await conn.beginTransaction();
