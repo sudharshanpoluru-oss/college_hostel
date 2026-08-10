@@ -1,14 +1,15 @@
 const { Pool } = require('pg');
 
 // Supabase (Postgres) connection string from project settings:
-// Project Settings -> Database -> Connection string -> Session pooler
+// Project Settings -> Database -> Connection string -> Transaction pooler
 const DATABASE_URL = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || 'postgresql://postgres:postgres@localhost:5432/postgres';
 
 const connectionConfig = {
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false },
   connectionTimeoutMillis: 10000,
-  max: 10,
+  max: 2,
+  idleTimeoutMillis: 30000,
 };
 
 const pool = new Pool(connectionConfig);
